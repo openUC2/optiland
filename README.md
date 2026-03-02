@@ -23,16 +23,20 @@
 
 ## Contents
 
-1. [Introduction](#introduction)
-2. [Documentation](#documentation)
-3. [Installation](#installation)
-4. [Core capabilities](#core-capabilities)
-5. [Learning Guide](#learning-guide)
-6. [Roadmap](#roadmap)
-7. [Get Involved](#get-involved)
-8. [Contributing](#contributing)
-9. [License](#license)
-10. [Contact and Support](#contact-and-support)
+- [Contents](#contents)
+- [Introduction](#introduction)
+- [Documentation](#documentation)
+- [Installation](#installation)
+- [Core Capabilities](#core-capabilities)
+- [🗺️ Roadmap](#️-roadmap)
+  - [Physics \& Core Engine](#physics--core-engine)
+  - [Optimization \& Algorithms](#optimization--algorithms)
+  - [Engineering \& Interoperability](#engineering--interoperability)
+  - [💡 The "Wildcard"](#-the-wildcard)
+- [🚧 Get Involved](#-get-involved)
+- [Contributing](#contributing)
+- [License](#license)
+- [Contact and Support](#contact-and-support)
 
 
 ---
@@ -72,7 +76,9 @@ Optiland's full documentation is available on [Read the Docs](https://optiland.r
 - **Core only**
 
     ```bash
-    pip install optiland
+    uv venv
+    source .venv/bin/activate
+    uv pip install optiland
     ```
 
 - **Core + GUI**
