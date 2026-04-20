@@ -29,13 +29,13 @@ class SurfaceInfoProvider(BaseInfoProvider):
     """Provides information for Surface2D objects."""
 
     def __init__(self, surface_group):
-        self.surface_group = surface_group
+        self.surfaces = surface_group
 
     def get_info(self, obj: Surface2D) -> str:
         surface = obj.surf
         # Find the index of the surface
         try:
-            surface_index = self.surface_group.surfaces.index(surface)
+            surface_index = self.surfaces.index(surface)
             info = [f"Surface: {surface_index}"]
         except ValueError:
             info = ["Surface: (Unknown)"]
@@ -64,7 +64,7 @@ class LensInfoProvider(BaseInfoProvider):
     """Provides information for Lens2D objects."""
 
     def __init__(self, surface_group):
-        self.surface_group = surface_group
+        self.surfaces = surface_group
 
     def get_info(self, obj: Lens2D) -> str:
         if not obj.surfaces:
@@ -76,8 +76,8 @@ class LensInfoProvider(BaseInfoProvider):
 
         # Find indices
         try:
-            first_idx = self.surface_group.surfaces.index(first_surf)
-            second_idx = self.surface_group.surfaces.index(second_surf)
+            first_idx = self.surfaces.index(first_surf)
+            second_idx = self.surfaces.index(second_surf)
             info = [f"Lens (Surfaces: {first_idx}-{second_idx})"]
         except ValueError:
             info = ["Lens"]
@@ -105,7 +105,9 @@ class RayBundleInfoProvider(BaseInfoProvider):
         # Field is always a tuple of two floats (x, y)
         field = obj.field
         x, y = field
-        info.append(f"Field: ({float(x):.2f}, {float(y):.2f})")
+        x_val = x.item() if hasattr(x, "item") else float(x)
+        y_val = y.item() if hasattr(y, "item") else float(y)
+        info.append(f"Field: ({x_val:.2f}, {y_val:.2f})")
 
         # TODO: Add wavelength info to RayBundle
         if hasattr(obj, "wavelength"):

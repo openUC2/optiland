@@ -52,7 +52,7 @@ class IncoherentIrradiance(BaseAnalysis):
          Convenience selectors that work exactly like those in
          `SpotDiagram` - default is to analyse all of them.
      detector_surface : int
-         Index into `optic.surface_group.surfaces` that designates the detector
+         Index into `optic.surfaces` that designates the detector
          plane to analyse (default=`-1`->image surface).
      data : list[list[be.ndarray]]
          2-D irradiance arrays for every (field,wvl) - outer index is field,
@@ -62,6 +62,10 @@ class IncoherentIrradiance(BaseAnalysis):
      user_initial_rays : RealRays | None
          Optional user-provided initial rays (at the source/object plane)
          to be traced through the whole optical system.
+     source : BaseSource | None
+         Optional extended source object (e.g., GaussianSource) to generate
+         initial rays automatically. Cannot be used with user_initial_rays.
+         When provided, num_rays determines how many rays to generate.
 
      Methods
      ---
@@ -84,11 +88,26 @@ class IncoherentIrradiance(BaseAnalysis):
         wavelengths="all",
         distribution: str = "random",
         user_initial_rays=None,
+        source=None,
+        skip_trace: bool = False,
     ):
         if fields == "all":
             self.fields = optic.fields.get_field_coords()
         else:
             self.fields = tuple(fields)
+
+        # Handle source integration
+        if source is not None and user_initial_rays is not None:
+            raise ValueError("Cannot specify both 'source' and 'user_initial_rays'.")
+
+        if source is not None:
+            # Generate rays from the extended source
+            self.user_initial_rays = source.generate_rays(num_rays)
+            # When using a source, we treat all rays as a single "field"
+            # The source emission defines the field, not optic.fields
+            self.fields = [(0.0, 0.0)]  # Single dummy field for source rays
+        else:
+            self.user_initial_rays = user_initial_rays
 
         self.num_rays = num_rays
         self.npix_x, self.npix_y = res
@@ -96,7 +115,7 @@ class IncoherentIrradiance(BaseAnalysis):
             None if px_size is None else (float(px_size[0]), float(px_size[1]))
         )
         self.detector_surface = int(detector_surface)
-        self.user_initial_rays = user_initial_rays
+        # self.user_initial_rays = user_initial_rays
         self._initial_ray_data = None
         if self.user_initial_rays is not None:
             if not isinstance(self.user_initial_rays, RealRays):
@@ -113,9 +132,10 @@ class IncoherentIrradiance(BaseAnalysis):
                 "wavelength": self.user_initial_rays.w,
             }
         self.distribution = distribution
+        self.skip_trace = skip_trace
 
         # The detector surface must have a physical aperture
-        surf = optic.surface_group.surfaces[self.detector_surface]
+        surf = optic.surfaces[self.detector_surface]
         if surf.aperture is None:
             raise ValueError(
                 "Detector surface has no physical aperture - set one "
@@ -233,10 +253,10 @@ class IncoherentIrradiance(BaseAnalysis):
         data = []
         for field in self.fields:
             f_block = []
-            for wl in self.wavelengths:
+            for wp in self.wavelengths:
                 f_block.append(
                     self._generate_field_data(
-                        field, wl, self.distribution, self.user_initial_rays
+                        field, wp.value, self.distribution, self.user_initial_rays
                     )
                 )
             data.append(f_block)
@@ -247,23 +267,29 @@ class IncoherentIrradiance(BaseAnalysis):
         Traces rays and bins their power. Switches between standard and
         differentiable methods based on the gradient mode.
         """
-        if user_initial_rays is None:
-            Hx, Hy = field
-            rays_traced = self.optic.trace(
-                Hx, Hy, wavelength, self.num_rays, distribution
+        rays_traced = None
+        if not self.skip_trace:
+            if user_initial_rays is None:
+                Hx, Hy = field
+                rays_traced = self.optic.trace(
+                    Hx, Hy, wavelength, self.num_rays, distribution
+                )
+            else:
+                rays_to_trace = RealRays(**self._initial_ray_data)
+                self.optic.surfaces.trace(rays_to_trace)
+                rays_traced = rays_to_trace
+
+        surf = self.optic.surfaces[self.detector_surface]
+        if rays_traced is not None:
+            x_g, y_g, z_g, power = (
+                rays_traced.x,
+                rays_traced.y,
+                rays_traced.z,
+                rays_traced.i,
             )
         else:
-            rays_to_trace = RealRays(**self._initial_ray_data)
-            self.optic.surface_group.trace(rays_to_trace)
-            rays_traced = rays_to_trace
-
-        surf = self.optic.surface_group.surfaces[self.detector_surface]
-        x_g, y_g, z_g, power = (
-            rays_traced.x,
-            rays_traced.y,
-            rays_traced.z,
-            rays_traced.i,
-        )
+            # Read from cache (assumes trace was done externally or skipping)
+            x_g, y_g, z_g, power = surf.x, surf.y, surf.z, surf.intensity
 
         from optiland.visualization.system.utils import transform
 
@@ -460,7 +486,7 @@ class IncoherentIrradiance(BaseAnalysis):
             return f"(User Rays: {field_label})"
         else:
             field_coord = self.fields[f_idx]
-            wavelength_val = self.wavelengths[w_idx]
+            wavelength_val = self.wavelengths[w_idx].value
             text = (
                 f"Field {f_idx} {field_coord}, "
                 f"$\\lambda_{w_idx}$ = {wavelength_val:.3f} µm"

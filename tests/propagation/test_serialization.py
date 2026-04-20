@@ -5,6 +5,7 @@ instances can be serialized to a dictionary and deserialized back into
 fully functional objects, including the correct resolution of all
 internal dependencies.
 """
+from __future__ import annotations
 
 import pytest
 import yaml
@@ -19,7 +20,6 @@ from optiland.propagation.grin import GRINPropagation
 from optiland.propagation.homogeneous import HomogeneousPropagation
 from optiland.surfaces.standard_surface import Surface
 
-
 # --- Test Cases ---
 # Each tuple defines a test scenario: (material_instance, expected_propagation_model_class)
 
@@ -32,10 +32,11 @@ grin_material.propagation_model = GRINPropagation()
 case_ideal_grin = (grin_material, GRINPropagation)
 
 # Case 3: AbbeMaterial with the default HomogeneousPropagation model.
-case_abbe_default = (AbbeMaterial(n=1.5168, abbe=64.17), HomogeneousPropagation)
+case_abbe_default = (AbbeMaterial(n=1.5168, abbe=64.17, model="polynomial"), HomogeneousPropagation)
 
 
 # --- Helper Function for File-Based Materials ---
+
 
 def create_dummy_material_file(tmp_path):
     """Creates a temporary material file for testing."""
@@ -54,6 +55,7 @@ def create_dummy_material_file(tmp_path):
 
 
 # --- The Main Test Function ---
+
 
 @pytest.mark.parametrize(
     "material, expected_model_class",
@@ -74,7 +76,7 @@ def test_optic_serialization_round_trip(
     """
     # 1. SETUP: Create a standard optic with the specified material.
     optic = Optic()
-    optic.add_surface(
+    optic.surfaces.add(
         Surface(
             previous_surface=None,
             geometry=StandardGeometry(coordinate_system=CoordinateSystem(), radius=100),
@@ -87,7 +89,7 @@ def test_optic_serialization_round_trip(
     optic_from_dict = Optic.from_dict(optic_dict)
 
     # 3. VERIFICATION: Check the deserialized object for correctness.
-    deserialized_surface = optic_from_dict.surface_group.surfaces[0]
+    deserialized_surface = optic_from_dict.surfaces[0]
     deserialized_material = deserialized_surface.material_post
     deserialized_model = deserialized_material.propagation_model
 
@@ -113,10 +115,12 @@ def test_material_file_serialization_round_trip(tmp_path, set_test_backend):
     material = MaterialFile(filename=dummy_file)
 
     optic = Optic()
-    optic.add_surface(
+    optic.surfaces.add(
         Surface(
             previous_surface=None,
-            geometry=StandardGeometry(coordinate_system=CoordinateSystem(), radius=-100),
+            geometry=StandardGeometry(
+                coordinate_system=CoordinateSystem(), radius=-100
+            ),
             material_post=material,
         )
     )
@@ -126,7 +130,7 @@ def test_material_file_serialization_round_trip(tmp_path, set_test_backend):
     optic_from_dict = Optic.from_dict(optic_dict)
 
     # 3. VERIFICATION
-    deserialized_material = optic_from_dict.surface_group.surfaces[0].material_post
+    deserialized_material = optic_from_dict.surfaces[0].material_post
 
     # Check material properties.
     assert isinstance(deserialized_material, MaterialFile)
@@ -136,4 +140,3 @@ def test_material_file_serialization_round_trip(tmp_path, set_test_backend):
     deserialized_model = deserialized_material.propagation_model
     assert isinstance(deserialized_model, HomogeneousPropagation)
     assert deserialized_model.material is deserialized_material
-

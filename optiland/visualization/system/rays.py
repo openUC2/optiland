@@ -45,7 +45,7 @@ class Rays2D:
         self.z = None
         self.i = None
 
-        n = optic.surface_group.num_surfaces
+        n = optic.surfaces.num_surfaces
         self.r_extent = be.zeros(n)
 
     def plot(
@@ -77,14 +77,18 @@ class Rays2D:
                 surface are not shown. Defaults to False.
 
         """
-        fields = resolve_fields(self.optic, fields)
-        wavelengths = resolve_wavelengths(self.optic, wavelengths)
+        # Visualization ignores weights; extract coords and values directly
+        field_points = resolve_fields(self.optic, fields)
+        wl_points = resolve_wavelengths(self.optic, wavelengths)
+        fields_coords = [fp.coord for fp in field_points]
+        wavelengths_vals = [wp.value for wp in wl_points]
 
         artists = {}
-        for i, field in enumerate(fields):
-            for j, wavelength in enumerate(wavelengths):
+
+        for i, field in enumerate(fields_coords):
+            for j, wavelength in enumerate(wavelengths_vals):
                 # if only one field, use different colors for each wavelength
-                color_idx = i if len(fields) > 1 else j
+                color_idx = i if len(fields_coords) > 1 else j
 
                 if distribution is None:
                     # trace only for surface extents
@@ -121,10 +125,10 @@ class Rays2D:
 
     def _process_traced_rays(self):
         """Processes the traced rays and updates the surface extents."""
-        self.x = self.optic.surface_group.x
-        self.y = self.optic.surface_group.y
-        self.z = self.optic.surface_group.z
-        self.i = self.optic.surface_group.intensity
+        self.x = self.optic.surfaces.x
+        self.y = self.optic.surfaces.y
+        self.z = self.optic.surfaces.z
+        self.i = self.optic.surfaces.intensity
 
         # update surface extents
         self._update_surface_extents()
@@ -169,9 +173,13 @@ class Rays2D:
     def _update_surface_extents(self):
         """Updates the extents of the surfaces in the optic's surface group."""
         r_extent_new = be.copy(be.zeros_like(self.r_extent))
-        for i, surf in enumerate(self.optic.surface_group.surfaces):
-            # convert to local coordinate system
-            x, y, _ = transform(self.x[i], self.y[i], self.z[i], surf, is_global=True)
+        for i, surf in enumerate(self.optic.surfaces):
+            x_surf = self.x[i]
+            y_surf = self.y[i]
+            z_surf = self.z[i]
+
+            # Convert to local coordinate system
+            x, y, _ = transform(x_surf, y_surf, z_surf, surf, is_global=True)
 
             r_extent_new[i] = be.nanmax(be.hypot(x, y))
         self.r_extent = be.fmax(self.r_extent, r_extent_new)
@@ -217,13 +225,13 @@ class Rays2D:
             zk = be.to_numpy(self.z[:, k])
             ik = be.to_numpy(self.i[:, k])
 
-            if hide_vignetted and np.any(ik == 0):
-                continue
-
-            # remove rays outside aperture
-            xk[ik == 0] = np.nan
-            zk[ik == 0] = np.nan
-            yk[ik == 0] = np.nan
+            if np.any(ik == 0):
+                if hide_vignetted:
+                    continue
+                first_zero_idx = np.where(ik == 0)[0][0]
+                xk[first_zero_idx + 1 :] = np.nan
+                yk[first_zero_idx + 1 :] = np.nan
+                zk[first_zero_idx + 1 :] = np.nan
 
             artist, ray_bundle = self._plot_single_line(
                 ax,
@@ -317,13 +325,16 @@ class Rays3D(Rays2D):
                 surface are not shown. Defaults to False.
 
         """
-        fields = resolve_fields(self.optic, fields)
-        wavelengths = resolve_wavelengths(self.optic, wavelengths)
+        # Visualization ignores weights; extract coords and values directly
+        field_points = resolve_fields(self.optic, fields)
+        wl_points = resolve_wavelengths(self.optic, wavelengths)
+        fields_coords = [fp.coord for fp in field_points]
+        wavelengths_vals = [wp.value for wp in wl_points]
 
-        for i, field in enumerate(fields):
-            for j, wavelength in enumerate(wavelengths):
+        for i, field in enumerate(fields_coords):
+            for j, wavelength in enumerate(wavelengths_vals):
                 # if only one field, use different colors for each wavelength
-                color_idx = i if len(fields) > 1 else j
+                color_idx = i if len(fields_coords) > 1 else j
 
                 if distribution is None:
                     # trace only for surface extents
@@ -378,13 +389,13 @@ class Rays3D(Rays2D):
             zk = be.to_numpy(self.z[:, k])
             ik = be.to_numpy(self.i[:, k])
 
-            if hide_vignetted and np.any(ik == 0):
-                continue
-
-            # remove rays outside aperture
-            xk[ik == 0] = np.nan
-            zk[ik == 0] = np.nan
-            yk[ik == 0] = np.nan
+            if np.any(ik == 0):
+                if hide_vignetted:
+                    continue
+                first_zero_idx = np.where(ik == 0)[0][0]
+                xk[first_zero_idx + 1 :] = np.nan
+                yk[first_zero_idx + 1 :] = np.nan
+                zk[first_zero_idx + 1 :] = np.nan
 
             self._plot_single_line(
                 ax, xk, yk, zk, color_idx, field, linewidth, theme=theme
@@ -417,6 +428,9 @@ class Rays3D(Rays2D):
             color = self._rgb_colors[color_idx % 10]
 
         for k in range(1, len(x)):
+            if np.isnan(x[k - 1]) or np.isnan(x[k]):
+                continue
+
             p0 = [x[k - 1], y[k - 1], z[k - 1]]
             p1 = [x[k], y[k], z[k]]
 

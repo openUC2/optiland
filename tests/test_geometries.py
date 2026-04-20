@@ -1,9 +1,13 @@
+from __future__ import annotations
+
 from contextlib import nullcontext as does_not_raise
+
 import numpy as np
 import pytest
 
 import optiland.backend as be
 from optiland import geometries
+from optiland.coordinate_system import CoordinateSystem
 from optiland.geometries import (
     BiconicGeometry,
     ForbesQ2dGeometry,
@@ -12,8 +16,6 @@ from optiland.geometries import (
     ForbesSolverConfig,
     ForbesSurfaceConfig,
 )
-from optiland.coordinate_system import CoordinateSystem
-from optiland.geometries import BiconicGeometry
 from optiland.materials import IdealMaterial
 from optiland.materials.material import Material
 from optiland.optic import Optic
@@ -1485,8 +1487,8 @@ class TestToroidalGeometry:
         """
         # --- System Setup ---
         lens = Optic()
-        lens.add_surface(index=0, thickness=be.inf)
-        lens.add_surface(
+        lens.surfaces.add(index=0, thickness=be.inf)
+        lens.surfaces.add(
             index=1,
             surface_type="toroidal",
             thickness=5.0,
@@ -1497,13 +1499,13 @@ class TestToroidalGeometry:
             conic=-0.5,
             toroidal_coeffs_poly_y=[0.05, 0.0002],
         )
-        lens.add_surface(index=2, thickness=10.0, material="air")
-        lens.add_surface(index=3)
+        lens.surfaces.add(index=2, thickness=10.0, material="air")
+        lens.surfaces.add(index=3)
 
         lens.set_aperture(aperture_type="EPD", value=10.0)
-        lens.add_wavelength(value=0.550, is_primary=True)
-        lens.set_field_type("angle")
-        lens.add_field(y=0)
+        lens.wavelengths.add(value=0.550, is_primary=True)
+        lens.fields.set_type("angle")
+        lens.fields.add(y=0)
 
         num_rays = 5  # Number of rays per fan
         wavelength = 0.550
@@ -1530,7 +1532,7 @@ class TestToroidalGeometry:
         )
 
         # Trace Y-Fan Rays
-        rays_out_yfan = lens.surface_group.trace(rays_in_yfan)
+        rays_out_yfan = lens.surfaces.trace(rays_in_yfan)
 
         zemax_x_out_yfan = be.array([0.0] * num_rays)
         zemax_y_out_yfan = be.array(
@@ -1591,7 +1593,7 @@ class TestToroidalGeometry:
             intensity=intensity_xfan,
         )
 
-        rays_out_xfan = lens.surface_group.trace(rays_in_xfan)
+        rays_out_xfan = lens.surfaces.trace(rays_in_xfan)
 
         zemax_x_out_xfan = be.array(
             [
@@ -1638,8 +1640,8 @@ class TestToroidalGeometry:
         """
         # --- System Setup ---
         lens = Optic()
-        lens.add_surface(index=0, thickness=be.inf)
-        lens.add_surface(
+        lens.surfaces.add(index=0, thickness=be.inf)
+        lens.surfaces.add(
             index=1,
             surface_type="toroidal",
             thickness=7.0,
@@ -1650,13 +1652,13 @@ class TestToroidalGeometry:
             conic=-0.5,
             toroidal_coeffs_poly_y=[5e-5, 5e-6],
         )
-        lens.add_surface(index=2, thickness=70.0, material="air")
-        lens.add_surface(index=3)
+        lens.surfaces.add(index=2, thickness=70.0, material="air")
+        lens.surfaces.add(index=3)
 
         lens.set_aperture(aperture_type="EPD", value=20.0)
-        lens.add_wavelength(value=0.550, is_primary=True)
-        lens.set_field_type("angle")
-        lens.add_field(y=0)
+        lens.wavelengths.add(value=0.550, is_primary=True)
+        lens.fields.set_type("angle")
+        lens.fields.add(y=0)
 
         # --- SAG testing ---
         x_coords = be.array([0.0, 2.5, 0.0, -2.5, 5.0, -5.0, 2.5, -2.5])
@@ -1677,7 +1679,7 @@ class TestToroidalGeometry:
         )
 
         # Calculate sag using Optiland
-        optiland_z_sag = lens.surface_group.surfaces[1].geometry.sag(x_coords, y_coords)
+        optiland_z_sag = lens.surfaces[1].geometry.sag(x_coords, y_coords)
 
         assert be.allclose(optiland_z_sag, zemax_z_sag, rtol=1e-5, atol=1e-6)
 
@@ -1706,7 +1708,7 @@ class TestToroidalGeometry:
         )
 
         # Trace Y-Fan Rays
-        rays_out_yfan = lens.surface_group.trace(rays_in_yfan)
+        rays_out_yfan = lens.surfaces.trace(rays_in_yfan)
         # (Lines removed as they are unnecessary debug print statements)
         zemax_x_out_yfan = be.array([0.0] * num_rays)
         zemax_y_out_yfan = be.array(
@@ -1748,7 +1750,7 @@ class TestToroidalGeometry:
         assert be.allclose(rays_out_yfan.N, zemax_N_out_yfan, rtol=1e-5, atol=1e-6)
 
         # --- Surface Normal Comparison ---
-        geom = lens.surface_group.surfaces[1].geometry
+        geom = lens.surfaces[1].geometry
         # choose a test point or array of points
         x_norm = be.array([2.5, -2.5, 2.5, -2.5])
         y_norm = be.array([0.0, 0.0, -2.5, 2.5])
@@ -1797,7 +1799,7 @@ class TestToroidalGeometry:
             intensity=intensity_xfan,
         )
 
-        rays_out_xfan = lens.surface_group.trace(rays_in_xfan)
+        rays_out_xfan = lens.surfaces.trace(rays_in_xfan)
 
         zemax_x_out_xfan = be.array(
             [
@@ -2110,9 +2112,9 @@ class TestBiconicGeometry:
 def forbes_system():
     lens = Optic()
     lens.set_aperture(aperture_type="EPD", value=4.0)
-    lens.set_field_type(field_type="angle")
-    lens.add_field(y=0)
-    lens.add_wavelength(value=1.55, is_primary=True)
+    lens.fields.set_type(field_type="angle")
+    lens.fields.add(y=0)
+    lens.wavelengths.add(value=1.55, is_primary=True)
     H_K3 = Material("H-K3", reference="cdgm")
     H_ZLAF68C = Material("H-ZLAF68C", reference="cdgm")
 
@@ -2124,10 +2126,10 @@ def forbes_system():
     conic_S4 = 0.038
     norm_radius_S4 = 10.0
 
-    lens.add_surface(index=0, thickness=0.055)
-    lens.add_surface(index=1, thickness=26.5)
-    lens.add_surface(index=2, thickness=4.0, radius=be.inf, material=H_K3, is_stop=True)
-    lens.add_surface(
+    lens.surfaces.add(index=0, thickness=0.055)
+    lens.surfaces.add(index=1, thickness=26.5)
+    lens.surfaces.add(index=2, thickness=4.0, radius=be.inf, material=H_K3, is_stop=True)
+    lens.surfaces.add(
         index=3,
         thickness=25.0,
         radius=22,
@@ -2136,8 +2138,8 @@ def forbes_system():
         norm_radius=norm_radius_S2,
         surface_type="forbes_qbfs",
     )
-    lens.add_surface(index=4, thickness=7.0, radius=be.inf, material=H_ZLAF68C)
-    lens.add_surface(
+    lens.surfaces.add(index=4, thickness=7.0, radius=be.inf, material=H_ZLAF68C)
+    lens.surfaces.add(
         index=5,
         thickness=10.0,
         radius=-31.0,
@@ -2146,26 +2148,29 @@ def forbes_system():
         norm_radius=norm_radius_S4,
         surface_type="forbes_qbfs",
     )
-    lens.add_surface(index=6)
+    lens.surfaces.add(index=6)
     return lens
 
 
 class TestForbesQbfsGeometry:
+    pytestmark = pytest.mark.filterwarnings(
+        "ignore:ForbesQbfsGeometry is deprecated:DeprecationWarning"
+    )
+
     def test_str(self, set_test_backend):
         """Test the string representation of the geometry."""
         cs = CoordinateSystem()
-        
+
         config = ForbesSurfaceConfig(radius=100.0)
         geometry = ForbesQbfsGeometry(cs, surface_config=config)
         assert str(geometry) == "ForbesQbfs"
 
     def test_sag_with_infinite_radius(self, set_test_backend):
         """Test sag calculation with an infinite radius (planar base)."""
-        
+
         config = ForbesSurfaceConfig(radius=be.inf, terms={1: 1e-3}, norm_radius=10.0)
         geometry = ForbesQbfsGeometry(
-            coordinate_system=CoordinateSystem(),
-            surface_config=config
+            coordinate_system=CoordinateSystem(), surface_config=config
         )
         # Base sag should be 0, total sag is just the departure term
         x, y = 5.0, 0.0
@@ -2180,11 +2185,10 @@ class TestForbesQbfsGeometry:
 
     def test_sag_outside_norm_radius(self, set_test_backend):
         """Test that sag departure is zero outside the normalization radius."""
-        
+
         config = ForbesSurfaceConfig(radius=100.0, terms={0: 1e-3}, norm_radius=10.0)
         geometry = ForbesQbfsGeometry(
-            coordinate_system=CoordinateSystem(),
-            surface_config=config
+            coordinate_system=CoordinateSystem(), surface_config=config
         )
         standard_geom = geometries.StandardGeometry(
             coordinate_system=CoordinateSystem(), radius=100.0
@@ -2200,7 +2204,9 @@ class TestForbesQbfsGeometry:
             pytest.skip("This test requires both numpy and torch backends to compare.")
 
         radial_terms = {0: 1.6e-4, 1: 0.3e-4, 2: 0.15e-4}
-        config = ForbesSurfaceConfig(radius=22.0, conic=-4.428, terms=radial_terms, norm_radius=6.336)
+        config = ForbesSurfaceConfig(
+            radius=22.0, conic=-4.428, terms=radial_terms, norm_radius=6.336
+        )
 
         be.set_backend("numpy")
         geometry_np = ForbesQbfsGeometry(
@@ -2251,7 +2257,6 @@ class TestForbesQbfsGeometry:
             ]
         )
 
-       
         config = ForbesSurfaceConfig(
             radius=zemax_radius,
             conic=zemax_conic,
@@ -2259,8 +2264,7 @@ class TestForbesQbfsGeometry:
             norm_radius=zemex_norm_radius,
         )
         geometry = ForbesQbfsGeometry(
-            coordinate_system=CoordinateSystem(),
-            surface_config=config
+            coordinate_system=CoordinateSystem(), surface_config=config
         )
 
         # Calculate sag in Optiland at the same radial coordinates
@@ -2275,8 +2279,10 @@ class TestForbesQbfsGeometry:
         Tests the surface normal at the vertex (x=0, y=0).
         It should always be [0, 0, -1] regardless of parameters.
         """
-        
-        config = ForbesSurfaceConfig(radius=50.0, conic=-1.0, terms={2: 1e-4}, norm_radius=10.0)
+
+        config = ForbesSurfaceConfig(
+            radius=50.0, conic=-1.0, terms={2: 1e-4}, norm_radius=10.0
+        )
         geometry = ForbesQbfsGeometry(
             coordinate_system=CoordinateSystem(),
             surface_config=config,
@@ -2309,7 +2315,7 @@ class TestForbesQbfsGeometry:
         zmx_rays_M = be.array([3.128052326230352e-002, 0.0, -3.128052326230352e-002])
         zmx_rays_N = be.array([9.995106446979125e-001, 1.0, 9.995106446979125e-001])
 
-        rays_out = system.surface_group.trace(test_rays)
+        rays_out = system.surfaces.trace(test_rays)
 
         assert be.allclose(rays_out.x, zmx_rays_x, rtol=1e-7, atol=1e-7)
         assert be.allclose(rays_out.y, zmx_rays_y, rtol=1e-7, atol=1e-7)
@@ -2322,14 +2328,14 @@ class TestForbesQbfsGeometry:
         """Helper to create a standard Forbes optic for autodiff testing."""
         optic = Optic(name="Autodiff Test Lens")
         optic.set_aperture(aperture_type="EPD", value=30.0)
-        optic.add_wavelength(value=1.55, is_primary=True, unit="um")
-        optic.add_field(y=0.0)
-        optic.add_surface(index=0, thickness=be.inf)
-        optic.add_surface(index=1, thickness=10, is_stop=True)
-        optic.add_surface(
+        optic.wavelengths.add(value=1.55, is_primary=True, unit="um")
+        optic.fields.add(y=0.0)
+        optic.surfaces.add(index=0, thickness=be.inf)
+        optic.surfaces.add(index=1, thickness=10, is_stop=True)
+        optic.surfaces.add(
             index=2, surface_type="standard", radius=60, thickness=7.0, material="N-BK7"
         )
-        optic.add_surface(
+        optic.surfaces.add(
             index=3,
             surface_type="forbes_qbfs",
             radius=-120,
@@ -2338,7 +2344,7 @@ class TestForbesQbfsGeometry:
             radial_terms={0: 1.0, 1: 0.8, 2: 0.2},
             norm_radius=30.0,
         )
-        optic.add_surface(index=4)
+        optic.surfaces.add(index=4)
         return optic
 
     @pytest.mark.parametrize("backend_name", ["torch"])
@@ -2349,15 +2355,17 @@ class TestForbesQbfsGeometry:
             pytest.skip("Autodiff test requires the torch backend.")
 
         optic = self._create_forbes_autodiff_optic()
-        forbes_surface = optic.surface_group.surfaces[3].geometry
+        forbes_surface = optic.surfaces[3].geometry
         coeffs_to_test = forbes_surface.radial_terms
-        
+
         for coeff_tensor in coeffs_to_test.values():
             coeff_tensor.requires_grad_(True)
 
         # Ray trace an OFF-AXIS ray
-        initial_rays = RealRays(x=0.1, y=0.1, z=0, L=0, M=0, N=1, intensity=1, wavelength=0.55)
-        optic.surface_group.trace(initial_rays)
+        initial_rays = RealRays(
+            x=0.1, y=0.1, z=0, L=0, M=0, N=1, intensity=1, wavelength=0.55
+        )
+        optic.surfaces.trace(initial_rays)
         final_x = initial_rays.x
 
         loss = be.sum(final_x**2)
@@ -2365,7 +2373,6 @@ class TestForbesQbfsGeometry:
 
         grads = [c.grad for c in coeffs_to_test.values()]
         assert any(g is not None and be.to_numpy(g) != 0 for g in grads)
-
 
     # --- NEW TEST ADDED ---
     @pytest.mark.parametrize("backend_name", ["torch"])
@@ -2377,28 +2384,29 @@ class TestForbesQbfsGeometry:
         be.set_backend(backend_name)
         if be.get_backend() != "torch":
             pytest.skip("Autodiff test requires the torch backend.")
-        
+
         be.grad_mode.enable()
 
         optic = self._create_forbes_autodiff_optic()
-        
+
         # We will test the gradient with respect to the radius
-        trainable_radius = optic.surface_group.surfaces[3].geometry.radius
+        trainable_radius = optic.surfaces[3].geometry.radius
         trainable_radius.requires_grad_(True)
 
         # Ray trace a ray hitting the VERTEX
-        initial_rays = RealRays(x=0.0, y=0.0, z=0, L=0, M=0, N=1, intensity=1, wavelength=0.55)
-        optic.surface_group.trace(initial_rays)
+        initial_rays = RealRays(
+            x=0.0, y=0.0, z=0, L=0, M=0, N=1, intensity=1, wavelength=0.55
+        )
+        optic.surfaces.trace(initial_rays)
         final_y = initial_rays.y
 
         loss = be.sum(final_y**2)
         loss.backward()
-        
+
         # The crucial check: assert the gradient is a valid number, not NaN
         grad = trainable_radius.grad
         assert grad is not None, "Gradient at vertex should not be None"
         assert not be.isnan(grad), "Gradient at vertex must not be NaN"
-
 
     @pytest.mark.parametrize("backend_name", ["torch"])
     def test_forbes_qbfs_autodiff_inplace_modification(self, backend_name):
@@ -2408,16 +2416,17 @@ class TestForbesQbfsGeometry:
         """
         be.set_backend(backend_name)
         be.grad_mode.enable()
-        from optiland.physical_apertures import RectangularAperture
         from optiland.analysis import IncoherentIrradiance
+        from optiland.physical_apertures import RectangularAperture
+
         # 1. Create a simple optical system with a Forbes Q-bfs surface
         optic = Optic(name="Test Forbes Autodiff")
         optic.set_aperture(aperture_type="EPD", value=10.0)
-        optic.add_wavelength(value=0.55, is_primary=True)
-        optic.set_field_type(field_type="angle")
-        optic.add_field(y=0.0)
-        optic.add_surface(index=0, thickness=be.inf)
-        optic.add_surface(
+        optic.wavelengths.add(value=0.55, is_primary=True)
+        optic.fields.set_type(field_type="angle")
+        optic.fields.add(y=0.0)
+        optic.surfaces.add(index=0, thickness=be.inf)
+        optic.surfaces.add(
             index=1,
             surface_type="forbes_qbfs",
             radius=be.tensor(100.0, requires_grad=True),
@@ -2425,14 +2434,16 @@ class TestForbesQbfsGeometry:
             thickness=10.0,
             material="N-BK7",
             radial_terms={i: be.tensor(0.0, requires_grad=True) for i in range(2)},
-            norm_radius=be.tensor(10.0, requires_grad=True)
+            norm_radius=be.tensor(10.0, requires_grad=True),
         )
-        optic.add_surface(index=2, aperture=RectangularAperture(x_min=-5, x_max=5, y_min=-5, y_max=5))
+        optic.surfaces.add(
+            index=2, aperture=RectangularAperture(x_min=-5, x_max=5, y_min=-5, y_max=5)
+        )
 
         # 2. Create a simple source and rays
         x_start = be.linspace(-1, 1, 10)
         y_start = be.linspace(-1, 1, 10)
-        y_grid, x_grid = be.meshgrid(y_start, x_start) # Corrected meshgrid call
+        y_grid, x_grid = be.meshgrid(y_start, x_start)  # Corrected meshgrid call
 
         x_flat, y_flat = x_grid.flatten(), y_grid.flatten()
         num_rays = len(x_flat)
@@ -2450,16 +2461,18 @@ class TestForbesQbfsGeometry:
         )
 
         # 3. Perform a forward pass and calculate a loss FUNCTION IDENTICAL TO THE NOTEBOOK
-        irradiance_analyzer = IncoherentIrradiance(optic, user_initial_rays=initial_rays, res=(num_bins, num_bins))
+        irradiance_analyzer = IncoherentIrradiance(
+            optic, user_initial_rays=initial_rays, res=(num_bins, num_bins)
+        )
         irradiance_analyzer._generate_data()
         irr_map, _, _ = irradiance_analyzer.data[0][0]
-        
+
         # --- NEW: Replicating the notebook's loss calculation ---
         actual_profile = irr_map[:, num_bins // 2]
         if actual_profile.max() > 0:
             actual_profile = actual_profile / actual_profile.max()
-        
-        target_irradiance = be.ones(num_bins) # A simple target
+
+        target_irradiance = be.ones(num_bins)  # A simple target
         loss_fn = be.nn.MSELoss()
         loss = loss_fn(actual_profile, target_irradiance)
         # --- END NEW ---
@@ -2468,8 +2481,9 @@ class TestForbesQbfsGeometry:
         try:
             loss.backward()
         except RuntimeError as e:
-            pytest.fail(f"Backward pass failed with a RuntimeError, indicating a probable in-place modification issue: {e}")
-
+            pytest.fail(
+                f"Backward pass failed with a RuntimeError, indicating a probable in-place modification issue: {e}"
+            )
 
     def test_to_dict_from_dict(self, set_test_backend):
         """
@@ -2479,7 +2493,9 @@ class TestForbesQbfsGeometry:
         cs = CoordinateSystem(x=1, y=-1, z=10, rx=0.01, ry=0.02, rz=-0.03)
         radial_terms = {0: 1e-3, 1: 2e-4, 2: -5e-5}
 
-        surface_config = ForbesSurfaceConfig(radius=123.4, conic=-0.9, terms=radial_terms, norm_radius=45.6)
+        surface_config = ForbesSurfaceConfig(
+            radius=123.4, conic=-0.9, terms=radial_terms, norm_radius=45.6
+        )
         solver_config = ForbesSolverConfig(tol=1e-12, max_iter=75)
 
         original_geometry = ForbesQbfsGeometry(
@@ -2497,7 +2513,6 @@ class TestForbesQbfsGeometry:
         assert geom_dict["surface_config"]["norm_radius"] == 45.6
         assert geom_dict["solver_config"]["tol"] == 1e-12
         assert geom_dict["solver_config"]["max_iter"] == 75
-
 
         reconstructed_geometry = ForbesQbfsGeometry.from_dict(geom_dict)
         assert reconstructed_geometry.radius == 123.4
@@ -2612,29 +2627,36 @@ class TestForbesQ2dGeometry:
         assert len(geometry.ams_coeffs) == 0
         assert len(geometry.bms_coeffs) == 0
 
+    @pytest.mark.filterwarnings(
+        "ignore:ForbesQbfsGeometry is deprecated:DeprecationWarning"
+    )
     def test_sag_symmetric_terms_only(self, set_test_backend):
         """Test sag with only m=0 terms, should match Q-bfs."""
         radial_terms = {0: 1e-3, 1: -2e-4}
-        
-        freeform_coeffs = {('a', 0, n): c for n, c in radial_terms.items()}
 
-        q2d_config = ForbesSurfaceConfig(radius=50.0, conic=0.0, terms=freeform_coeffs, norm_radius=10.0)
-        geom_q2d = ForbesQ2dGeometry(
-            coordinate_system=CoordinateSystem(),
-            surface_config=q2d_config
+        freeform_coeffs = {("a", 0, n): c for n, c in radial_terms.items()}
+
+        q2d_config = ForbesSurfaceConfig(
+            radius=50.0, conic=0.0, terms=freeform_coeffs, norm_radius=10.0
         )
-        qbfs_config = ForbesSurfaceConfig(radius=50.0, conic=0.0, terms=radial_terms, norm_radius=10.0)
+        geom_q2d = ForbesQ2dGeometry(
+            coordinate_system=CoordinateSystem(), surface_config=q2d_config
+        )
+        qbfs_config = ForbesSurfaceConfig(
+            radius=50.0, conic=0.0, terms=radial_terms, norm_radius=10.0
+        )
         geom_qbfs = ForbesQbfsGeometry(
-            coordinate_system=CoordinateSystem(),
-            surface_config=qbfs_config
+            coordinate_system=CoordinateSystem(), surface_config=qbfs_config
         )
         x, y = 3.0, 4.0
         assert_allclose(geom_q2d.sag(x, y), geom_qbfs.sag(x, y))
 
     def test_sag_with_sine_term(self, set_test_backend):
         """Test sag with a sine term, which should be zero along the x-axis"""
-        
-        config = ForbesSurfaceConfig(radius=100.0, conic=0.0, terms={('b', 1, 1): 1e-3}, norm_radius=10.0)
+
+        config = ForbesSurfaceConfig(
+            radius=100.0, conic=0.0, terms={("b", 1, 1): 1e-3}, norm_radius=10.0
+        )
         geometry = ForbesQ2dGeometry(
             coordinate_system=CoordinateSystem(),
             surface_config=config,
@@ -2646,14 +2668,15 @@ class TestForbesQ2dGeometry:
         assert_allclose(geometry.sag(x, y), base_geom.sag(x, y))
 
     def test_prepare_coeffs(self, set_test_backend):
-     
         freeform_coeffs = {
-            ('a', 0, 0): 1.0,   # Symmetric term a_0^0
-            ('a', 1, 1): 2.0,   # Cosine term a_1^1
-            ('b', 1, 1): 3.0,   # Sine term b_1^1
-            ('a', 0, 4): 4.0,   # Symmetric term a_4^0
+            ("a", 0, 0): 1.0,  # Symmetric term a_0^0
+            ("a", 1, 1): 2.0,  # Cosine term a_1^1
+            ("b", 1, 1): 3.0,  # Sine term b_1^1
+            ("a", 0, 4): 4.0,  # Symmetric term a_4^0
         }
-        config = ForbesSurfaceConfig(radius=100.0, conic=0.0, terms=freeform_coeffs, norm_radius=10.0)
+        config = ForbesSurfaceConfig(
+            radius=100.0, conic=0.0, terms=freeform_coeffs, norm_radius=10.0
+        )
         geometry = ForbesQ2dGeometry(
             coordinate_system=CoordinateSystem(),
             surface_config=config,
@@ -2665,22 +2688,22 @@ class TestForbesQ2dGeometry:
         # ams should have a_1^1
         assert len(geometry.ams_coeffs) == 1
         assert_allclose(geometry.ams_coeffs[0], [0.0, 2.0])  # a_n^1 list for m=1
-        
+
         assert len(geometry.bms_coeffs) == 1
-        assert_allclose(geometry.bms_coeffs[0], [0.0, 3.0]) 
+        assert_allclose(geometry.bms_coeffs[0], [0.0, 3.0])
 
     def _create_forbes_q2d_autodiff_optic(self):
         """Helper to create a standard Forbes Q2D optic for autodiff testing."""
         optic = Optic(name="Q2D Autodiff Test Lens")
-        optic.add_wavelength(value=0.55, is_primary=True)
-        optic.add_field(y=0.0)
+        optic.wavelengths.add(value=0.55, is_primary=True)
+        optic.fields.add(y=0.0)
 
         # Create a trainable freeform coefficient
         trainable_coeff = be.tensor(0.01, requires_grad=True)
-        freeform_coeffs = {('a', 1, 1): trainable_coeff}
+        freeform_coeffs = {("a", 1, 1): trainable_coeff}
 
-        optic.add_surface(index=0, thickness=be.inf)
-        optic.add_surface(
+        optic.surfaces.add(index=0, thickness=be.inf)
+        optic.surfaces.add(
             index=1,
             surface_type="forbes_q2d",
             radius=-100.0,
@@ -2689,7 +2712,7 @@ class TestForbesQ2dGeometry:
             freeform_coeffs=freeform_coeffs,
             norm_radius=20.0,
         )
-        optic.add_surface(index=2)
+        optic.surfaces.add(index=2)
         return optic, trainable_coeff
 
     @pytest.mark.parametrize("backend_name", ["torch"])
@@ -2700,9 +2723,11 @@ class TestForbesQ2dGeometry:
         optic, trainable_coeff = self._create_forbes_q2d_autodiff_optic()
 
         # ray through the vertex
-        vertex_ray = RealRays(x=0.0, y=0.0, z=0.0, L=0.0, M=0.0, N=1.0, intensity=1.0, wavelength=0.55)
-        final_ray = optic.surface_group.trace(vertex_ray)
-        
+        vertex_ray = RealRays(
+            x=0.0, y=0.0, z=0.0, L=0.0, M=0.0, N=1.0, intensity=1.0, wavelength=0.55
+        )
+        final_ray = optic.surfaces.trace(vertex_ray)
+
         # define loss and compute gradient
         loss = be.sum(final_ray.y**2)
         loss.backward()
@@ -2715,8 +2740,10 @@ class TestForbesQ2dGeometry:
         """Test serialization and deserialization."""
         cs = CoordinateSystem(x=1, y=-1, z=10)
         # UPDATED: Convert to the new Zemax-aligned format
-        freeform_coeffs = {('a', 2, 2): 1e-4, ('b', 1, 1): -5e-5}
-        config = ForbesSurfaceConfig(radius=123.4, conic=-0.9, terms=freeform_coeffs, norm_radius=45.6)
+        freeform_coeffs = {("a", 2, 2): 1e-4, ("b", 1, 1): -5e-5}
+        config = ForbesSurfaceConfig(
+            radius=123.4, conic=-0.9, terms=freeform_coeffs, norm_radius=45.6
+        )
         original_geometry = ForbesQ2dGeometry(
             coordinate_system=cs,
             surface_config=config,
@@ -2726,7 +2753,10 @@ class TestForbesQ2dGeometry:
         assert reconstructed_geometry.to_dict() == geom_dict
 
 
-from optiland.geometries.forbes.qpoly import q2d_nm_coeffs_to_ams_bms, compute_z_zprime_q2d
+from optiland.geometries.forbes.qpoly import (
+    compute_z_zprime_q2d,
+    q2d_nm_coeffs_to_ams_bms,
+)
 
 
 class TestForbesValidation:
@@ -2749,7 +2779,7 @@ class TestForbesValidation:
         the explicit formulas published in the Forbes papers. This is the most
         fundamental check of the mathematical engine.
 
-        References: 
+        References:
             "Characterizing the shape of freeform optics" (2012), Fig. 3.
         """
         # We want to isolate a single polynomial Q_n^m. We do this by setting its
@@ -2788,6 +2818,7 @@ class TestForbesValidation:
         x = 0.4
         P_n_m_canonical = 1.5 - x
         from optiland.geometries.forbes.qpoly import f_q2d, g_q2d
+
         P_0_m = 0.5
         f0 = f_q2d(n=0, m=m)
         Q_0_m_canonical = P_0_m / f0
@@ -2797,6 +2828,7 @@ class TestForbesValidation:
         coeffs_to_test = [0.0] * (n + 1)
         coeffs_to_test[n] = 1.0
         from optiland.geometries.forbes.qpoly import clenshaw_q2d
+
         alphas = clenshaw_q2d(coeffs_to_test, m=m, usq=x)
         Q_n_m_optiland = 0.5 * alphas[0]
         assert np.allclose(Q_n_m_optiland, Q_n_m_canonical, atol=1e-9)
@@ -2811,7 +2843,7 @@ class TestForbesValidation:
         n, m = 1, 2
         x = 0.4  # An arbitrary value for u^2 between 0 and 1
 
-        # calculate the ground truth using the analytical formula 
+        # calculate the ground truth using the analytical formula
         # From the Forbes papers (e.g. 2012 paper), we know
         # that for m>1, P_1^m(x) = m - 0.5 - (m-1)x.
         # for m=2:
@@ -2849,26 +2881,27 @@ class TestForbesValidation:
 
         assert np.allclose(Q_n_m_optiland, Q_n_m_canonical, atol=1e-9)
 
-
     def test_q2d_normal_against_numerical_derivative(self):
         """
         Validates the analytical surface normal for the non-vertex case against
         a numerical derivative (finite difference)
         """
-        
+
         freeform_coeffs = {
-            ('a', 1, 1): -0.25,
-            ('b', 1, 0): 0.5,
+            ("a", 1, 1): -0.25,
+            ("b", 1, 0): 0.5,
         }
 
-        config = ForbesSurfaceConfig(radius=21.709, conic=-4.428, terms=freeform_coeffs, norm_radius=6.0)
+        config = ForbesSurfaceConfig(
+            radius=21.709, conic=-4.428, terms=freeform_coeffs, norm_radius=6.0
+        )
         geometry = ForbesQ2dGeometry(
             coordinate_system=CoordinateSystem(),
             surface_config=config,
         )
 
         x, y = 1.0, 0.5
-        h = 1e-6 
+        h = 1e-6
 
         # Calculate sag at points surrounding (x, y)
         sag_center = geometry.sag(x, y)
@@ -2889,45 +2922,69 @@ class TestForbesValidation:
         # compare
         assert np.allclose(df_dx_analytical, df_dx_numerical, atol=1e-6)
         assert np.allclose(df_dy_analytical, df_dy_numerical, atol=1e-6)
-        
-        
+
     def test_complex_ray_tracing(self, set_test_backend):
         """
         Tests the ray tracing through a complex Forbes geometry with multiple
         coefficients and terms to ensure the full system behaves as expected.
         """
-        # Create a complex system: Q-2d and Qbfs 
+        # Create a complex system: Q-2d and Qbfs
         optic = Optic()
         optic.set_aperture(aperture_type="EPD", value=4.0)
 
-        optic.set_field_type(field_type="angle")
-        optic.add_field(y=0)
+        optic.fields.set_type(field_type="angle")
+        optic.fields.add(y=0)
 
-        optic.add_wavelength(value=1.550, is_primary=True)
+        optic.wavelengths.add(value=1.550, is_primary=True)
 
         H_K3 = IdealMaterial(n=1.50, k=0)
-        H_ZLAF68C = Material("H-ZLAF68C", reference='cdgm')
+        H_ZLAF68C = Material("H-ZLAF68C", reference="cdgm")
 
         norm_radius = 10.0
         freeform_coeffs = {
-            ('b',1,0): 0.23,
-            ('a',1,1): -0.25,
-            ('a',1,3): -2.0,
-            ('b',2,0): 0.4,
-            ('b',3,1): 0.5
-            
+            ("b", 1, 0): 0.23,
+            ("a", 1, 1): -0.25,
+            ("a", 1, 3): -2.0,
+            ("b", 2, 0): 0.4,
+            ("b", 3, 1): 0.5,
         }
 
         radial_terms = {0: -0.334, 1: 0.130, 2: -0.099, 3: 0.082, 4: -0.093}
 
-
-        optic.add_surface(index=0, thickness=be.inf)
-        optic.add_surface(index=1, thickness=26.5)
-        optic.add_surface(index=2, thickness=4.0, radius=be.inf, material=H_K3, is_stop=True, aperture=6.0)
-        optic.add_surface(index=3, thickness=25.0, radius=21.7, conic=-4.428, freeform_coeffs=freeform_coeffs, norm_radius=6.0, surface_type="forbes_q2d", aperture=6.0) 
-        optic.add_surface(index=4, thickness=7.0, radius=be.inf, material=H_ZLAF68C, aperture=16.0)
-        optic.add_surface(index=5, thickness=10.0, radius=-31.408, conic=-0.334, radial_terms=radial_terms, norm_radius=10.0, surface_type="forbes_qbfs", aperture=16.0)
-        optic.add_surface(index=6)
+        optic.surfaces.add(index=0, thickness=be.inf)
+        optic.surfaces.add(index=1, thickness=26.5)
+        optic.surfaces.add(
+            index=2,
+            thickness=4.0,
+            radius=be.inf,
+            material=H_K3,
+            is_stop=True,
+            aperture=6.0,
+        )
+        optic.surfaces.add(
+            index=3,
+            thickness=25.0,
+            radius=21.7,
+            conic=-4.428,
+            freeform_coeffs=freeform_coeffs,
+            norm_radius=6.0,
+            surface_type="forbes_q2d",
+            aperture=6.0,
+        )
+        optic.surfaces.add(
+            index=4, thickness=7.0, radius=be.inf, material=H_ZLAF68C, aperture=16.0
+        )
+        optic.surfaces.add(
+            index=5,
+            thickness=10.0,
+            radius=-31.408,
+            conic=-0.334,
+            radial_terms=radial_terms,
+            norm_radius=10.0,
+            surface_type="forbes_qbfs",
+            aperture=16.0,
+        )
+        optic.surfaces.add(index=6)
 
         # Create rays to trace through this geometry
         rays_1 = RealRays(
@@ -2962,35 +3019,114 @@ class TestForbesValidation:
         )
 
         # trace and group for comparison
-        rays_out_1 = optic.surface_group.trace(rays_1)
-        rays_out_2 = optic.surface_group.trace(rays_2)
-        rays_out_3 = optic.surface_group.trace(rays_3)
-        
-        rays_out_1 = be.stack([rays_out_1.x, rays_out_1.y, rays_out_1.z, rays_out_1.L, rays_out_1.M, rays_out_1.N])
-        rays_out_2 = be.stack([rays_out_2.x, rays_out_2.y, rays_out_2.z, rays_out_2.L, rays_out_2.M, rays_out_2.N])
-        rays_out_3 = be.stack([rays_out_3.x, rays_out_3.y, rays_out_3.z, rays_out_3.L, rays_out_3.M, rays_out_3.N])
-        
-        # from zmx
-        rays_zmx_1 = be.array([[2.262266099465996E+000, -7.611636358380779E+000, 8.507340277857841E+000], 
-                               [7.011812112445810E-001, 6.351818041247482E-001, 1.844219290499702E+000],
-                               [72.5, 72.5, 72.5],
-                               [7.394271933375213E-002, -4.741197708598330E-002, 1.144444436877695E-003],
-                               [1.760669468507115E-003, 3.956471870787390E-003, 1.390619028086458E-002],
-                               [9.972609359142435E-001, 9.988675841967912E-001, 9.999026493208244E-001]])
+        rays_out_1 = optic.surfaces.trace(rays_1)
+        rays_out_2 = optic.surfaces.trace(rays_2)
+        rays_out_3 = optic.surfaces.trace(rays_3)
 
-        rays_zmx_2 = be.array([[-2.908637501241161E+000, -7.611636358380779E+000, -1.909625498103998E+000], 
-                               [-2.833834953431557E+000, 6.351818041247482E-001, 2.879512384120351E+000],
-                               [72.5, 72.5, 72.5],
-                               [-2.028167761942454E-002, -4.741197708598330E-002, -1.395817128850889E-002],
-                               [4.487436493546904E-002, 3.956471870787390E-003, -4.367333651449654E-002],
-                               [9.987867364580793E-001, 9.988675841967912E-001, 9.989483515837905E-001]])
-        
-        rays_zmx_3 = be.array([[1.995705116576431E+000, -3.353247609431453E+000, -4.016958077970503E+000], 
-                               [1.568402524873438E+000, -3.440142525503505E+000, 6.226900552306260E-001],
-                               [72.5, 72.5, 72.5],
-                               [6.464067747819106E-002, -3.675345849055221E-002, -1.314936805201002E-002],
-                               [7.066054530137703E-002, 2.733014103973235E-002, -4.397208974806662E-002],
-                               [9.954037724224643E-001, 9.989505726910273E-001, 9.989462194948339E-001]])
+        rays_out_1 = be.stack(
+            [
+                rays_out_1.x,
+                rays_out_1.y,
+                rays_out_1.z,
+                rays_out_1.L,
+                rays_out_1.M,
+                rays_out_1.N,
+            ]
+        )
+        rays_out_2 = be.stack(
+            [
+                rays_out_2.x,
+                rays_out_2.y,
+                rays_out_2.z,
+                rays_out_2.L,
+                rays_out_2.M,
+                rays_out_2.N,
+            ]
+        )
+        rays_out_3 = be.stack(
+            [
+                rays_out_3.x,
+                rays_out_3.y,
+                rays_out_3.z,
+                rays_out_3.L,
+                rays_out_3.M,
+                rays_out_3.N,
+            ]
+        )
+
+        # from zmx
+        rays_zmx_1 = be.array(
+            [
+                [2.262266099465996e000, -7.611636358380779e000, 8.507340277857841e000],
+                [7.011812112445810e-001, 6.351818041247482e-001, 1.844219290499702e000],
+                [72.5, 72.5, 72.5],
+                [
+                    7.394271933375213e-002,
+                    -4.741197708598330e-002,
+                    1.144444436877695e-003,
+                ],
+                [
+                    1.760669468507115e-003,
+                    3.956471870787390e-003,
+                    1.390619028086458e-002,
+                ],
+                [
+                    9.972609359142435e-001,
+                    9.988675841967912e-001,
+                    9.999026493208244e-001,
+                ],
+            ]
+        )
+
+        rays_zmx_2 = be.array(
+            [
+                [
+                    -2.908637501241161e000,
+                    -7.611636358380779e000,
+                    -1.909625498103998e000,
+                ],
+                [-2.833834953431557e000, 6.351818041247482e-001, 2.879512384120351e000],
+                [72.5, 72.5, 72.5],
+                [
+                    -2.028167761942454e-002,
+                    -4.741197708598330e-002,
+                    -1.395817128850889e-002,
+                ],
+                [
+                    4.487436493546904e-002,
+                    3.956471870787390e-003,
+                    -4.367333651449654e-002,
+                ],
+                [
+                    9.987867364580793e-001,
+                    9.988675841967912e-001,
+                    9.989483515837905e-001,
+                ],
+            ]
+        )
+
+        rays_zmx_3 = be.array(
+            [
+                [1.995705116576431e000, -3.353247609431453e000, -4.016958077970503e000],
+                [1.568402524873438e000, -3.440142525503505e000, 6.226900552306260e-001],
+                [72.5, 72.5, 72.5],
+                [
+                    6.464067747819106e-002,
+                    -3.675345849055221e-002,
+                    -1.314936805201002e-002,
+                ],
+                [
+                    7.066054530137703e-002,
+                    2.733014103973235e-002,
+                    -4.397208974806662e-002,
+                ],
+                [
+                    9.954037724224643e-001,
+                    9.989505726910273e-001,
+                    9.989462194948339e-001,
+                ],
+            ]
+        )
 
         # validate
         assert be.allclose(rays_out_1, rays_zmx_1, rtol=1e-7, atol=1e-7)

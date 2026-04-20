@@ -10,6 +10,7 @@ import optiland.backend as be
 from .base import BaseFieldDefinition
 
 
+@BaseFieldDefinition.register("paraxial_image_height")
 class ParaxialImageHeightField(BaseFieldDefinition):
     """Defines fields by the chief ray's paraxial height at the image plane."""
 
@@ -48,7 +49,7 @@ class ParaxialImageHeightField(BaseFieldDefinition):
 
             x = -u_obj_x * (offset + EPL)
             y = -u_obj_y * (offset + EPL)
-            z = optic.surface_group.positions[1] - offset
+            z = optic.surfaces.positions[1] - offset
             x0 = Px * EPD / 2 * vx + x
             y0 = Py * EPD / 2 * vy + y
             z0 = be.full_like(Px, z)
@@ -89,7 +90,7 @@ class ParaxialImageHeightField(BaseFieldDefinition):
         if optic.object_surface.is_infinite:
             u_obj = u_obj_unit * (y_img_target / y_img_unit)
             y = u_obj * -EPL
-            z = optic.surface_group.positions[1]
+            z = optic.surfaces.positions[1]
             y0 = y1 + y
             z0 = be.ones_like(y1) * z
         else:
@@ -134,26 +135,26 @@ class ParaxialImageHeightField(BaseFieldDefinition):
             float: The z-coordinate offset relative to the first surface.
 
         """
-        z = optic.surface_group.positions[1:-1]
+        z = optic.surfaces.positions[1:-1]
         offset = optic.paraxial.EPD()
         return offset - be.min(z)
 
     def _trace_unit_chief_ray(self, optic, plane="image"):
-        stop_idx = optic.surface_group.stop_index
-        num_surf = optic.surface_group.num_surfaces
-        pos = optic.surface_group.positions
+        stop_idx = optic.surfaces.stop_index
+        num_surf = optic.surfaces.num_surfaces
+        pos = optic.surfaces.positions
         wavelength = optic.primary_wavelength
 
         if plane == "image":
             z_start = pos[stop_idx]
-            y, u = optic.paraxial._trace_generic(
+            y, u = optic.paraxial.trace_generic(
                 y=0, u=1, z=z_start, wavelength=wavelength, skip=stop_idx
             )
             return y[-1], u[-1]
         elif plane == "object":
             z_start = pos[-1] - pos[stop_idx]
             skip = num_surf - stop_idx
-            y, u = optic.paraxial._trace_generic(
+            y, u = optic.paraxial.trace_generic(
                 y=0, u=1, z=z_start, wavelength=wavelength, reverse=True, skip=skip
             )
             return y[-1], u[-1]

@@ -50,11 +50,10 @@ class PupilAberration(BaseAnalysis):
         wavelengths: str | list = "all",
         num_points: int = 256,
     ):
+        from optiland.utils import resolve_fields
+
         _optic_ref = optic
-        if fields == "all":
-            self.fields = _optic_ref.fields.get_field_coords()
-        else:
-            self.fields = fields
+        self.fields = resolve_fields(_optic_ref, fields)
 
         if num_points % 2 == 0:
             self.num_points = num_points + 1  # force to be odd so a point lies at P=0
@@ -126,9 +125,11 @@ class PupilAberration(BaseAnalysis):
         axs = np.atleast_2d(axs)
         Px, Py = self.data["Px"], self.data["Py"]
 
-        for k, field in enumerate(self.fields):
+        for k, fp in enumerate(self.fields):
+            field = fp.coord
             ax_y, ax_x = axs[k, 0], axs[k, 1]
-            for wavelength in self.wavelengths:
+            for wp in self.wavelengths:
+                wavelength = wp.value
                 ex = self.data[f"{field}"][f"{wavelength}"]["x"]
                 ey = self.data[f"{field}"][f"{wavelength}"]["y"]
                 ax_y.plot(
@@ -183,7 +184,7 @@ class PupilAberration(BaseAnalysis):
             dict: The pupil aberration data.
 
         """
-        stop_idx = self.optic.surface_group.stop_index
+        stop_idx = self.optic.surfaces.stop_index
 
         # Maybe use a data class for complex return values
         data: dict[str, Any] = {
@@ -193,18 +194,20 @@ class PupilAberration(BaseAnalysis):
 
         # determine size of stop
         self.optic.paraxial.trace(0, 1, self.optic.primary_wavelength)
-        d = self.optic.surface_group.y[stop_idx, 0]
+        d = self.optic.surfaces.y[stop_idx, 0]
 
         # Paraxial trace
         self.optic.paraxial.trace(0, data["Py"], self.optic.primary_wavelength)
-        parax_ref = self.optic.surface_group.y[stop_idx, :]
+        parax_ref = self.optic.surfaces.y[stop_idx, :]
 
-        for field in self.fields:
+        for fp in self.fields:
+            field = fp.coord
             Hx = field[0]
             Hy = field[1]
 
             data[f"{field}"] = {}
-            for wavelength in self.wavelengths:
+            for wp in self.wavelengths:
+                wavelength = wp.value
                 data[f"{field}"][f"{wavelength}"] = {}
 
                 # Trace along the x-axis
@@ -215,8 +218,8 @@ class PupilAberration(BaseAnalysis):
                     num_rays=self.num_points,
                     distribution="line_x",
                 )
-                real_x = self.optic.surface_group.x[stop_idx, :]
-                real_int_x = self.optic.surface_group.intensity[stop_idx, :]
+                real_x = self.optic.surfaces.x[stop_idx, :]
+                real_int_x = self.optic.surfaces.intensity[stop_idx, :]
 
                 # Trace along the y-axis
                 self.optic.trace(
@@ -226,8 +229,8 @@ class PupilAberration(BaseAnalysis):
                     num_rays=self.num_points,
                     distribution="line_y",
                 )
-                real_y = self.optic.surface_group.y[stop_idx, :]
-                real_int_y = self.optic.surface_group.intensity[stop_idx, :]
+                real_y = self.optic.surfaces.y[stop_idx, :]
+                real_int_y = self.optic.surfaces.intensity[stop_idx, :]
 
                 # Compute error
                 error_x = (parax_ref - real_x) / d * 100

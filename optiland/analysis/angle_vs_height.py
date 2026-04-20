@@ -173,18 +173,19 @@ class BaseAngleVsHeightAnalysis(BaseAnalysis, abc.ABC):
         Px = be.atleast_1d(Px)
         Py = be.atleast_1d(Py)
 
-        wavelength_value = self.wavelengths[0]  # Use the first and only wavelength
+        # Use the first and only wavelength
+        wavelength_value = self.wavelengths[0].value
 
         self.optic.trace_generic(
             Hx=Hx, Hy=Hy, Px=Px, Py=Py, wavelength=wavelength_value
         )
 
         if self.axis == 1:  # Y-direction measurement
-            incident_dir_cosines = self.optic.surface_group.M[self.surface_idx, :]
-            height = self.optic.surface_group.y[self.surface_idx, :]
+            incident_dir_cosines = self.optic.surfaces.M[self.surface_idx, :]
+            height = self.optic.surfaces.y[self.surface_idx, :]
         else:  # X-direction measurement
-            incident_dir_cosines = self.optic.surface_group.L[self.surface_idx, :]
-            height = self.optic.surface_group.x[self.surface_idx, :]
+            incident_dir_cosines = self.optic.surfaces.L[self.surface_idx, :]
+            height = self.optic.surfaces.x[self.surface_idx, :]
 
         angle_rad = be.arcsin(incident_dir_cosines)
 

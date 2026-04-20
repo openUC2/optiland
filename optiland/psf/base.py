@@ -134,9 +134,9 @@ class BasePSF(Wavefront):
             current_fig = fig_to_plot_on
             current_fig.clear()
             ax = (
-                current_fig.add_subplot(111, figsize=figsize)
+                current_fig.add_subplot(111)
                 if projection == "2d"
-                else current_fig.add_subplot(111, figsize=figsize, projection="3d")
+                else current_fig.add_subplot(111, projection="3d")
             )
         else:
             current_fig, ax = (
@@ -455,4 +455,6 @@ class BasePSF(Wavefront):
         Returns:
             float: The working F-number.
         """
-        return get_working_FNO(self.optic, self.fields[0], self.wavelengths[0])
+        return get_working_FNO(
+            self.optic, self.fields[0].coord, self.wavelengths[0].value
+        )

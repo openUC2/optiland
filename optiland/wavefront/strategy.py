@@ -53,7 +53,7 @@ class ReferenceStrategy(ABC):
         self.optic = optic
         self.distribution = distribution
         self.reference_type = reference_type
-        self.n_image = optic.n()[-1]
+        self.n_image = optic.surfaces.n(optic.primary_wavelength)[-1]
 
     @abstractmethod
     def compute_wavefront_data(
@@ -109,7 +109,10 @@ class ReferenceStrategy(ABC):
         Returns:
             ndarray: The OPD array with tilt correction applied.
         """
-        if not isinstance(self.optic.field_definition, AngleField):
+        if not isinstance(self.optic.fields.field_definition, AngleField):
+            return opd
+
+        if not self.optic.object_surface.is_infinite:
             return opd
 
         hx, hy = field
@@ -154,7 +157,7 @@ class ChiefRayStrategy(ReferenceStrategy):
 
     def __init__(self, optic: Optic, distribution: BaseDistribution, **kwargs) -> None:
         super().__init__(optic, distribution, **kwargs)
-        self.pupil_z = optic.paraxial.XPL() + optic.surface_group.positions[-1]
+        self.pupil_z = optic.paraxial.XPL() + optic.surfaces.positions[-1]
         self._chief_ray = None  # Cache for single field calculation usage
 
     def compute_wavefront_data(
@@ -182,7 +185,7 @@ class ChiefRayStrategy(ReferenceStrategy):
 
         # 3. Trace the full grid of rays for the field
         rays = self.optic.trace(*field, wavelength, None, self.distribution)
-        intensity = self.optic.surface_group.intensity[-1, :]
+        intensity = self.optic.surfaces.intensity[-1, :]
 
         # 4. Compute OPD for all rays
         opd_img = geometry.path_length(rays, self.n_image)
@@ -197,6 +200,15 @@ class ChiefRayStrategy(ReferenceStrategy):
         pupil_y = rays.y - t * rays.M
         pupil_z = rays.z - t * rays.N
 
+        # 6. Handle polarization data if available
+        kwargs = {}
+        prt_matrix = getattr(rays, "p", None)
+        exit_fields = getattr(rays, "get_exit_fields", None)
+
+        if prt_matrix is not None and exit_fields:
+            kwargs["prt_matrix"] = prt_matrix
+            kwargs["E_exits"] = exit_fields(self.optic.polarization_state)
+
         return WavefrontData(
             pupil_x=pupil_x,
             pupil_y=pupil_y,
@@ -204,6 +216,7 @@ class ChiefRayStrategy(ReferenceStrategy):
             opd=opd_wv,
             intensity=intensity,
             radius=geometry.radius,
+            **kwargs,
         )
 
     def _create_reference_geometry(self, rays: RealRays) -> ReferenceGeometry:
@@ -233,7 +246,7 @@ class ChiefRayStrategy(ReferenceStrategy):
             SphericalReference: The spherical reference geometry.
         """
         R = be.sqrt(x**2 + y**2 + (z - self.pupil_z) ** 2)
-        return SphericalReference((float(x), float(y), float(z)), R.item())
+        return SphericalReference((x.item(), y.item(), z.item()), R.item())
 
     def _calculate_sphere_from_chief_ray(
         self, chief_ray: RealRays
@@ -267,7 +280,7 @@ class ChiefRayStrategy(ReferenceStrategy):
             PlanarReference: The planar reference geometry.
         """
         return PlanarReference(
-            (float(x), float(y), float(z)), (float(L), float(M), float(N))
+            (x.item(), y.item(), z.item()), (L.item(), M.item(), N.item())
         )
 
 
@@ -332,6 +345,15 @@ class CentroidStrategy(ReferenceStrategy):
         pupil_y = rays.y - t * rays.M
         pupil_z = rays.z - t * rays.N
 
+        # 7. Handle polarization data if available
+        kwargs = {}
+        prt_matrix = getattr(rays, "p", None)
+        exit_fields = getattr(rays, "get_exit_fields", None)
+
+        if prt_matrix is not None and exit_fields:
+            kwargs["prt_matrix"] = prt_matrix
+            kwargs["E_exits"] = exit_fields(self.optic.polarization_state)
+
         return WavefrontData(
             pupil_x=pupil_x,
             pupil_y=pupil_y,
@@ -339,6 +361,7 @@ class CentroidStrategy(ReferenceStrategy):
             opd=opd_waves,
             intensity=rays.i,
             radius=geometry.radius,
+            **kwargs,
         )
 
     def _points_from_rays(self, rays: RealRays) -> tuple[be.ndarray, be.ndarray]:
@@ -445,9 +468,9 @@ class CentroidStrategy(ReferenceStrategy):
             SphericalReference: The spherical reference geometry.
         """
         distances_wf = be.linalg.norm(wavefront_points - centroid, axis=1)
-        radius = float(be.sum(weights * distances_wf) / be.sum(weights))
+        radius = (be.sum(weights * distances_wf) / be.sum(weights)).item()
         return SphericalReference(
-            (float(centroid[0]), float(centroid[1]), float(centroid[2])), radius
+            (centroid[0].item(), centroid[1].item(), centroid[2].item()), radius
         )
 
     def _calculate_reference_sphere(
@@ -485,11 +508,11 @@ class CentroidStrategy(ReferenceStrategy):
             mean_direction = mean_direction / norm
 
         return PlanarReference(
-            (float(centroid[0]), float(centroid[1]), float(centroid[2])),
+            (centroid[0].item(), centroid[1].item(), centroid[2].item()),
             (
-                float(mean_direction[0]),
-                float(mean_direction[1]),
-                float(mean_direction[2]),
+                mean_direction[0].item(),
+                mean_direction[1].item(),
+                mean_direction[2].item(),
             ),
         )
 
@@ -555,8 +578,8 @@ class BestFitStrategy(CentroidStrategy):
         yc = c[1] / 2
         zc = c[2] / 2
         radius = be.sqrt(c[3] + xc**2 + yc**2 + zc**2)
-        self.center = (float(xc), float(yc), float(zc))
-        return SphericalReference(self.center, float(radius))
+        self.center = (xc.item(), yc.item(), zc.item())
+        return SphericalReference(self.center, radius.item())
 
     def _create_planar_ref(self, wavefront_points: be.ndarray) -> PlanarReference:
         """Create a planar reference geometry using least-squares fit.
@@ -578,8 +601,8 @@ class BestFitStrategy(CentroidStrategy):
         normal = vh[-1, :]
 
         return PlanarReference(
-            (float(centroid[0]), float(centroid[1]), float(centroid[2])),
-            (float(normal[0]), float(normal[1]), float(normal[2])),
+            (centroid[0].item(), centroid[1].item(), centroid[2].item()),
+            (normal[0].item(), normal[1].item(), normal[2].item()),
         )
 
 

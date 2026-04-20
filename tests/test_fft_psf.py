@@ -1,17 +1,19 @@
+from __future__ import annotations
+
+from contextlib import nullcontext as does_not_raise
 from unittest.mock import patch
 
 import matplotlib
 import matplotlib.pyplot as plt
+import pytest
 from matplotlib.axes import Axes
 from matplotlib.figure import Figure
+
 import optiland.backend as be
-import pytest
-
-from contextlib import nullcontext as does_not_raise
-
 from optiland.psf import FFTPSF
 from optiland.psf.fft import calculate_grid_size
 from optiland.samples.objectives import CookeTriplet
+
 from .utils import assert_allclose
 
 matplotlib.use("Agg")  # use non-interactive backend for testing
@@ -195,7 +197,7 @@ def test_view_oversampling(projection, make_fftpsf):
 
 def test_get_units_finite_obj(make_fftpsf):
     def tweak(optic):
-        optic.surface_group.surfaces[0].geometry.cs.z = -be.array(1e6)
+        optic.surfaces[0].geometry.cs.z = -be.array(1e6)
 
     fftpsf = make_fftpsf(field=(0, 1), tweak_optic=tweak)
     image = be.zeros((128, 128))
@@ -215,7 +217,7 @@ def test_psf_log_tick_formatter(make_fftpsf):
 
 def test_invalid_working_FNO(make_fftpsf):
     def tweak(optic):
-        optic.surface_group.surfaces[0].geometry.cs.z = -be.array(1e100)
+        optic.surfaces[0].geometry.cs.z = -be.array(1e100)
 
     fftpsf = make_fftpsf(field=(0, 1), tweak_optic=tweak)
     with pytest.raises(ValueError):

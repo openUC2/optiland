@@ -79,8 +79,10 @@ class JonesPupil(BaseAnalysis):
         """
         # Select primary wavelength index
         wl_idx = 0
-        if self.optic.primary_wavelength in self.wavelengths:
-            wl_idx = self.wavelengths.index(self.optic.primary_wavelength)
+        primary_wl = self.optic.primary_wavelength
+        wl_values = [wp.value for wp in self.wavelengths]
+        if primary_wl in wl_values:
+            wl_idx = wl_values.index(primary_wl)
 
         data_fw = self.data[wl_idx]
 
@@ -134,7 +136,7 @@ class JonesPupil(BaseAnalysis):
             ax.set_xlabel("Px")
 
         field_val = self.field
-        wl_val = self.wavelengths[wl_idx]
+        wl_val = self.wavelengths[wl_idx].value
         fig.suptitle(f"Jones Pupil - Field: {field_val}, Wavelength: {wl_val:.4f} µm")
         fig.tight_layout()
 
@@ -151,8 +153,8 @@ class JonesPupil(BaseAnalysis):
 
         data = []
         Hx, Hy = self.field
-        for wl in self.wavelengths:
-            data.append(self._generate_single_data(Hx, Hy, Px, Py, wl))
+        for wp in self.wavelengths:
+            data.append(self._generate_single_data(Hx, Hy, Px, Py, wp.value))
 
         return data
 
@@ -163,7 +165,7 @@ class JonesPupil(BaseAnalysis):
         original_pol = self.optic.polarization
         if original_pol == "ignore":
             # Temporarily enable polarization to get PolarizedRays
-            self.optic.set_polarization(PolarizationState())
+            self.optic.updater.set_polarization(PolarizationState())
 
         try:
             rays = self.optic.trace_generic(
@@ -171,7 +173,7 @@ class JonesPupil(BaseAnalysis):
             )
         finally:
             if original_pol == "ignore":
-                self.optic.set_polarization("ignore")
+                self.optic.updater.set_polarization("ignore")
 
         if not hasattr(rays, "p"):
             # Fallback if rays are not polarized (should not happen w/ check above)

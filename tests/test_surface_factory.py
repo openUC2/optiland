@@ -1,26 +1,28 @@
-import optiland.backend as be
+from __future__ import annotations
+
 import pytest
 
-from .utils import assert_allclose
+import optiland.backend as be
 from optiland.coatings import FresnelCoating, SimpleCoating
-from optiland.materials import IdealMaterial
-from optiland.samples.objectives import TessarLens
 from optiland.interactions.diffractive_model import DiffractiveInteractionModel
-from optiland.surfaces.object_surface import ObjectSurface
 from optiland.interactions.thin_lens_interaction_model import ThinLensInteractionModel
-from optiland.phase.radial import RadialPhaseProfile
-from optiland.surfaces.standard_surface import Surface
-from optiland.surfaces import SurfaceFactory
+from optiland.materials import IdealMaterial
 from optiland.optic import Optic
-from optiland.fields import AngleField, Field
+from optiland.phase.radial import RadialPhaseProfile
+from optiland.samples.objectives import TessarLens
+from optiland.surfaces import SurfaceFactory
+from optiland.surfaces.object_surface import ObjectSurface
+from optiland.surfaces.standard_surface import Surface
+
+from .utils import assert_allclose
 
 
 class TestSurfaceFactory:
     @pytest.fixture(autouse=True)
     def setup(self):
         self.lens = TessarLens()
-        self.surface_group = self.lens.surface_group
-        self.factory = SurfaceFactory(self.surface_group)
+        self.surfaces = self.lens.surfaces
+        self.factory = SurfaceFactory(self.surfaces)
 
     def test_create_surface_standard(self, set_test_backend):
         surface = self.factory.create_surface(
@@ -165,7 +167,7 @@ class TestSurfaceFactory:
         k0 = 2 * be.pi / wavelength
 
         # The Optic starts with an object surface. We need to set its material.
-        optic.add_surface(index=0, radius=be.inf, thickness=be.inf)
+        optic.surfaces.add(index=0, radius=be.inf, thickness=be.inf)
 
         # Define the phase profile for a lens: phi = -k0/(2f) * r^2
         # k0 should be calculated in mm^-1 for the phase profile coefficient
@@ -174,7 +176,7 @@ class TestSurfaceFactory:
         phase_profile = RadialPhaseProfile(coefficients=[lens_coeff])
 
         # Add the metalens surface
-        optic.add_surface(
+        optic.surfaces.add(
             index=1,
             surface_type="plane",
             interaction_type="phase",
@@ -183,12 +185,12 @@ class TestSurfaceFactory:
             material="air",
             thickness=focal_length,  # Propagate to the focal plane
         )
-        optic.add_surface(index=2)
+        optic.surfaces.add(index=2)
 
         # Configure optic for tracing
-        optic.add_wavelength(wavelength)
-        optic.set_field_type("angle")
-        optic.add_field(0)  # On-axis field
+        optic.wavelengths.add(wavelength)
+        optic.fields.set_type("angle")
+        optic.fields.add(0)  # On-axis field
         optic.set_aperture("EPD", 10.0)
 
         # Trace rays

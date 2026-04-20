@@ -1,25 +1,31 @@
+from __future__ import annotations
 
-import pytest
 from unittest.mock import MagicMock, patch
+
 import matplotlib.pyplot as plt
-from optiland.visualization.system import interaction, lens, surface, ray_bundle
+import pytest
+
 from optiland.visualization.info import providers
+from optiland.visualization.system import interaction, lens, ray_bundle, surface
+
 
 @pytest.fixture
 def mock_fig_ax():
     fig, ax = plt.subplots()
     return fig, ax
 
+
 @pytest.fixture
 def mock_optic():
     optic = MagicMock()
-    optic.surface_group = MagicMock()
-    optic.surface_group.surfaces = []
+    optic.surfaces = MagicMock()
+    optic.surfaces = []
     return optic
+
 
 class TestInfoProviders:
     def test_surface_info_provider(self, mock_optic):
-        provider = providers.SurfaceInfoProvider(mock_optic.surface_group)
+
 
         # Mock surface
         surf_2d = MagicMock(spec=surface.Surface2D)
@@ -33,7 +39,8 @@ class TestInfoProviders:
         surf_2d.surf = real_surf
 
         # Add to group so index can be found
-        mock_optic.surface_group.surfaces = [real_surf]
+        mock_optic.surfaces = [real_surf]
+        provider = providers.SurfaceInfoProvider(mock_optic.surfaces)
 
         info = provider.get_info(surf_2d)
         assert "Surface: 0 (STOP)" in info
@@ -42,7 +49,7 @@ class TestInfoProviders:
         assert "Material: Glass" in info
 
     def test_lens_info_provider(self, mock_optic):
-        provider = providers.LensInfoProvider(mock_optic.surface_group)
+
 
         # Mock Lens2D
         lens_2d = MagicMock(spec=lens.Lens2D)
@@ -51,7 +58,8 @@ class TestInfoProviders:
         s2.surf = MagicMock()
         lens_2d.surfaces = [s1, s2]
 
-        mock_optic.surface_group.surfaces = [s1.surf, s2.surf]
+        mock_optic.surfaces = [s1.surf, s2.surf]
+        provider = providers.LensInfoProvider(mock_optic.surfaces)
 
         # Mock material info
         s1.surf.material_post.n.return_value.item.return_value = 1.5
@@ -72,7 +80,8 @@ class TestInfoProviders:
         info = provider.get_info(bundle)
         assert "Ray Bundle" in info
         assert "Field: (0.00, 1.00)" in info
-        assert "Wavelength: 0.6 nm" in info # 0.55 rounds to 0.6 with .1f
+        assert "Wavelength: 0.6 nm" in info  # 0.55 rounds to 0.6 with .1f
+
 
 class TestInteractionManager:
     def test_init(self, mock_fig_ax, mock_optic):
@@ -135,7 +144,10 @@ class TestInteractionManager:
         event.xdata, event.ydata = 0, 0
 
         # Need to ensure SurfaceInfoProvider can run
-        with patch("optiland.visualization.info.providers.SurfaceInfoProvider.get_info", return_value="Tooltip Info"):
+        with patch(
+            "optiland.visualization.info.providers.SurfaceInfoProvider.get_info",
+            return_value="Tooltip Info",
+        ):
             manager.show_tooltip(artist, event)
             assert manager.tooltip.get_text() == "Tooltip Info"
             assert manager.tooltip.get_visible() == True
@@ -145,7 +157,7 @@ class TestInteractionManager:
         manager = interaction.InteractionManager(fig, ax, mock_optic)
 
         # Test showing panel
-        with patch.object(manager, 'get_info_text', return_value="Panel Info"):
+        with patch.object(manager, "get_info_text", return_value="Panel Info"):
             manager.show_info_panel(MagicMock())
             assert manager.info_panel is not None
 

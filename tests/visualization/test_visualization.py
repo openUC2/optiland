@@ -1,12 +1,14 @@
 # import pkg_resources
+from __future__ import annotations
+
 from importlib import resources
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
 import matplotlib
 import matplotlib.pyplot as plt
+import pytest
 from matplotlib.axes import Axes
 from matplotlib.figure import Figure
-import pytest
 
 import optiland.backend as be
 from optiland import fields
@@ -14,15 +16,16 @@ from optiland.coordinate_system import CoordinateSystem
 from optiland.geometries import BaseGeometry, EvenAsphere
 from optiland.materials import AbbeMaterial, BaseMaterial, IdealMaterial, MaterialFile
 from optiland.optic import Optic
+from optiland.samples.microscopes import UVReflectingMicroscope
 from optiland.samples.objectives import ReverseTelephoto, TessarLens
 from optiland.samples.simple import Edmund_49_847
 from optiland.samples.telescopes import HubbleTelescope
-from optiland.visualization.base import BaseViewer
-from optiland.visualization.system import OpticViewer, OpticViewer3D
-from optiland.visualization.system.system import OpticalSystem
-from optiland.visualization.system.lens import Lens2D, Lens3D
-from optiland.visualization.info import LensInfoViewer
 from optiland.visualization.analysis import SurfaceSagViewer
+from optiland.visualization.base import BaseViewer
+from optiland.visualization.info import LensInfoViewer
+from optiland.visualization.system import OpticViewer, OpticViewer3D
+from optiland.visualization.system.lens import Lens2D, Lens3D
+from optiland.visualization.system.system import OpticalSystem
 
 matplotlib.use("Agg")  # use non-interactive backend for testing
 
@@ -119,8 +122,8 @@ class TestOpticViewer:
     def test_view_single_field(self, set_test_backend):
         lens = ReverseTelephoto()
         lens.fields = fields.FieldGroup()
-        lens.set_field_type(field_type="angle")
-        lens.add_field(y=0)
+        lens.fields.set_type(field_type="angle")
+        lens.fields.add(y=0)
         fig, ax = lens.draw()
         assert fig is not None
         assert ax is not None
@@ -195,12 +198,34 @@ class TestOpticViewer:
     def test_view_all_wavelengths(self, set_test_backend):
         lens = ReverseTelephoto()
         # Add a second wavelength to test "all"
-        lens.add_wavelength(value=0.65)
+        lens.wavelengths.add(value=0.65)
         viewer = OpticViewer(lens)
         fig, ax, _ = viewer.view(wavelengths="all")
         assert fig is not None
         assert ax is not None
         assert len(ax.get_lines()) > 0  # Ensure rays were drawn
+        plt.close(fig)
+
+    def test_view_uv_reflecting_microscope(self, set_test_backend):
+        """Regression test: drawing a catadioptric system with small-radius
+        mirrors must not produce RuntimeWarnings."""
+        import warnings
+
+        lens = UVReflectingMicroscope()
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            fig, ax = lens.draw()
+
+        # No RuntimeWarnings should be raised
+        runtime_warnings = [x for x in w if issubclass(x.category, RuntimeWarning)]
+        assert len(runtime_warnings) == 0, (
+            f"RuntimeWarnings raised: {[str(x.message) for x in runtime_warnings]}"
+        )
+
+        assert fig is not None
+        assert ax is not None
+        assert isinstance(fig, Figure)
+        assert isinstance(ax, Axes)
         plt.close(fig)
 
 
@@ -223,7 +248,7 @@ class TestOpticViewer3D:
 
     def test_view_asymmetric(self, set_test_backend):
         lens = ReverseTelephoto()
-        lens.surface_group.surfaces[1].geometry.is_symmetric = False
+        lens.surfaces[1].geometry.is_symmetric = False
         viewer = OpticViewer3D(lens)
         with (
             patch.object(viewer.iren, "Start") as mock_start,
@@ -258,8 +283,8 @@ class TestOpticViewer3D:
     def test_view_single_field(self, set_test_backend):
         lens = ReverseTelephoto()
         lens.fields = fields.FieldGroup()
-        lens.set_field_type(field_type="angle")
-        lens.add_field(y=0)
+        lens.fields.set_type(field_type="angle")
+        lens.fields.add(y=0)
         viewer = OpticViewer3D(lens)
         with (
             patch.object(viewer.iren, "Start") as mock_start,
@@ -271,7 +296,7 @@ class TestOpticViewer3D:
 
     def test_non_symmetric(self, set_test_backend):
         lens = ReverseTelephoto()
-        lens.surface_group.surfaces[1].geometry.is_symmetric = False
+        lens.surfaces[1].geometry.is_symmetric = False
         viewer = OpticViewer3D(lens)
         viewer.system._identify_components()
         c = viewer.system.components[0]
@@ -279,8 +304,8 @@ class TestOpticViewer3D:
 
     def test_view_toroidal(self, set_test_backend):
         cylindrical_lens = Optic()
-        cylindrical_lens.add_surface(index=0, radius=be.inf, thickness=be.inf)
-        cylindrical_lens.add_surface(
+        cylindrical_lens.surfaces.add(index=0, radius=be.inf, thickness=be.inf)
+        cylindrical_lens.surfaces.add(
             index=1,
             thickness=7,
             radius_x=20,  # <- radius: x radius of rotation.
@@ -291,12 +316,12 @@ class TestOpticViewer3D:
             conic=0.0,
             coefficients=[],
         )
-        cylindrical_lens.add_surface(index=2, thickness=65)
-        cylindrical_lens.add_surface(index=3)
+        cylindrical_lens.surfaces.add(index=2, thickness=65)
+        cylindrical_lens.surfaces.add(index=3)
         cylindrical_lens.set_aperture(aperture_type="EPD", value=20.0)
-        cylindrical_lens.set_field_type(field_type="angle")
-        cylindrical_lens.add_field(y=0)
-        cylindrical_lens.add_wavelength(value=0.587, is_primary=True)
+        cylindrical_lens.fields.set_type(field_type="angle")
+        cylindrical_lens.fields.add(y=0)
+        cylindrical_lens.wavelengths.add(value=0.587, is_primary=True)
 
         viewer = OpticViewer3D(cylindrical_lens)
 
@@ -310,7 +335,7 @@ class TestOpticViewer3D:
 
     def test_view_non_symmetric(self, set_test_backend):
         lens = ReverseTelephoto()
-        lens.surface_group.surfaces[1].geometry.is_symmetric = False
+        lens.surfaces[1].geometry.is_symmetric = False
         viewer = OpticViewer3D(lens)
         viewer.system._identify_components()
         with (
@@ -413,7 +438,7 @@ class TestLensInfoViewer:
 
     def test_invalid_geometry(self, set_test_backend):
         lens = ReverseTelephoto()
-        lens.surface_group.surfaces[2].geometry = InvalidGeometry()
+        lens.surfaces[2].geometry = InvalidGeometry()
         viewer = LensInfoViewer(lens)
         with pytest.raises(ValueError):
             viewer.view()
@@ -435,7 +460,7 @@ class TestLensInfoViewer:
     def test_view_asphere(self, capsys, set_test_backend):
         lens = ReverseTelephoto()
         asphere_geo = EvenAsphere(CoordinateSystem(), 100, coefficients=[0.1, 0.3, 1.2])
-        lens.surface_group.surfaces[2].geometry = asphere_geo
+        lens.surfaces[2].geometry = asphere_geo
         viewer = LensInfoViewer(lens)
         viewer.view()
         captured = capsys.readouterr()
@@ -459,7 +484,7 @@ class TestLensInfoViewer:
             ),
         )
         mat = MaterialFile(filename)
-        lens.surface_group.surfaces[2].material_post = mat
+        lens.surfaces[2].material_post = mat
         viewer = LensInfoViewer(lens)
         viewer.view()
         captured = capsys.readouterr()
@@ -474,7 +499,7 @@ class TestLensInfoViewer:
     def test_view_ideal_material(self, capsys, set_test_backend):
         lens = ReverseTelephoto()
         mat = IdealMaterial(1.5)
-        lens.surface_group.surfaces[2].material_post = mat
+        lens.surfaces[2].material_post = mat
         viewer = LensInfoViewer(lens)
         viewer.view()
         captured = capsys.readouterr()
@@ -488,21 +513,24 @@ class TestLensInfoViewer:
 
     def test_view_invalid_material(self, set_test_backend):
         lens = ReverseTelephoto()
-        lens.surface_group.surfaces[2].material_post = InvalidMaterial()
+        lens.surfaces[2].material_post = InvalidMaterial()
         viewer = LensInfoViewer(lens)
         with pytest.raises(ValueError):
             viewer.view()
 
     def test_view_abbe_material(self, set_test_backend):
         lens = ReverseTelephoto()
-        lens.surface_group.surfaces[2].material_post = AbbeMaterial(1.5, 60, model="polynomial")
+        lens.surfaces[2].material_post = AbbeMaterial(
+            1.5, 60, model="polynomial"
+        )
         viewer = LensInfoViewer(lens)
         viewer.view()
 
     def test_view_abbe_material_e(self, set_test_backend):
         lens = ReverseTelephoto()
         from optiland.materials import AbbeMaterialE
-        lens.surface_group.surfaces[2].material_post = AbbeMaterialE(1.5, 60)
+
+        lens.surfaces[2].material_post = AbbeMaterialE(1.5, 60)
         viewer = LensInfoViewer(lens)
         viewer.view()
 
@@ -513,9 +541,9 @@ class TestSurfaceSagViewer:
     def test_view_with_cylindrical_lens(self, set_test_backend):
         """Test the sag viewer with a biconic (cylindrical) lens."""
         lens = Optic(name="Cylindrical Test Lens")
-        lens.add_surface(index=0, thickness=be.inf)
-        lens.add_surface(index=1, surface_type="biconic", radius_y=-50, thickness=5)
-        lens.add_surface(index=2, radius=be.inf)
+        lens.surfaces.add(index=0, thickness=be.inf)
+        lens.surfaces.add(index=1, surface_type="biconic", radius_y=-50, thickness=5)
+        lens.surfaces.add(index=2, radius=be.inf)
 
         viewer = SurfaceSagViewer(lens)
         viewer.view(surface_index=1)
@@ -526,9 +554,9 @@ class TestSurfaceSagViewer:
     def test_view_with_custom_cross_section(self, set_test_backend):
         """Test the sag viewer with non-default cross-sections."""
         lens = Optic(name="Cylindrical Test Lens")
-        lens.add_surface(index=0, thickness=be.inf)
-        lens.add_surface(index=1, surface_type="biconic", radius_y=-50, thickness=5)
-        lens.add_surface(index=2, radius=be.inf)
+        lens.surfaces.add(index=0, thickness=be.inf)
+        lens.surfaces.add(index=1, surface_type="biconic", radius_y=-50, thickness=5)
+        lens.surfaces.add(index=2, radius=be.inf)
 
         viewer = SurfaceSagViewer(lens)
         viewer.view(surface_index=1, y_cross_section=1.5, x_cross_section=-1.5)
@@ -541,21 +569,27 @@ def test_mangin_mirror_visualization(projection, lens_class, set_test_backend):
     """Test that a Mangin mirror is visualized as a single lens component."""
     # Create a simple Mangin mirror
     mangin_mirror = Optic(name="Mangin Mirror")
-    mangin_mirror.add_wavelength(value=0.55, is_primary=True)
-    mangin_mirror.add_surface(index=0, radius=be.inf, thickness=be.inf)  # Object
-    mangin_mirror.add_surface(index=1, radius=-100, thickness=+5, material="N-BK7")   # Front surface
-    mangin_mirror.add_surface(index=2, radius=-100, thickness=-5, material="mirror", is_stop=True)  # Back surface (reflective)
-    mangin_mirror.add_surface(index=3, radius=-100, thickness=-50, material="N-BK7")   # Front surface
-    mangin_mirror.add_surface(index=4, radius=be.inf)  # Image
-    mangin_mirror.set_field_type("angle")
-    mangin_mirror.add_field(y=0)
+    mangin_mirror.wavelengths.add(value=0.55, is_primary=True)
+    mangin_mirror.surfaces.add(index=0, radius=be.inf, thickness=be.inf)  # Object
+    mangin_mirror.surfaces.add(
+        index=1, radius=-100, thickness=+5, material="N-BK7"
+    )  # Front surface
+    mangin_mirror.surfaces.add(
+        index=2, radius=-100, thickness=-5, material="mirror", is_stop=True
+    )  # Back surface (reflective)
+    mangin_mirror.surfaces.add(
+        index=3, radius=-100, thickness=-50, material="N-BK7"
+    )  # Front surface
+    mangin_mirror.surfaces.add(index=4, radius=be.inf)  # Image
+    mangin_mirror.fields.set_type("angle")
+    mangin_mirror.fields.add(y=0)
     mangin_mirror.set_aperture(aperture_type="EPD", value=25)
-    mangin_mirror.add_wavelength(value=0.65, is_primary=True)
+    mangin_mirror.wavelengths.add(value=0.65, is_primary=True)
 
     # Dummy rays object for OpticalSystem
     class DummyRays:
         def __init__(self, optic):
-            self.r_extent = [15] * optic.surface_group.num_surfaces
+            self.r_extent = [15] * optic.surfaces.num_surfaces
 
     optical_system = OpticalSystem(
         mangin_mirror, DummyRays(mangin_mirror), projection=projection
@@ -564,18 +598,18 @@ def test_mangin_mirror_visualization(projection, lens_class, set_test_backend):
 
     # Verify the components were identified correctly
     # Two "lens" (really just same lens, superimposed) and one image plane.
-    assert (
-        len(optical_system.components) == 3
-    ), "Expected two components: the lens and the image plane."
+    assert len(optical_system.components) == 3, (
+        "Expected two components: the lens and the image plane."
+    )
 
     lens_components = [
         c for c in optical_system.components if isinstance(c, lens_class)
     ]
-    
+
     # Ensure "two" lenses are found - really, this is the same lens, superimposed.
     assert len(lens_components) == 2
 
     # Ensure that the identified lens consists of two surfaces.
-    assert (
-        len(lens_components[0].surfaces) == 2
-    ), "The Mangin mirror component should be made of two surfaces."
+    assert len(lens_components[0].surfaces) == 2, (
+        "The Mangin mirror component should be made of two surfaces."
+    )

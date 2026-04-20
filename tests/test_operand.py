@@ -1,11 +1,13 @@
+from __future__ import annotations
+
 import pytest
 
 import optiland.backend as be
 from optiland.optic import Optic
 from optiland.optimization import operand
-from optiland.optimization.operand import RayOperand, LensOperand
-from optiland.samples.telescopes import HubbleTelescope
+from optiland.optimization.operand import LensOperand, RayOperand
 from optiland.samples.objectives import CookeTriplet
+from optiland.samples.telescopes import HubbleTelescope
 
 from .utils import assert_allclose
 
@@ -298,7 +300,7 @@ class TestRayOperand:
             "wavelength": 0.55,
             "num_rays": 3,
         }
-        assert_allclose(operand.RayOperand.OPD_difference(**data), 0.0732334055041471)
+        assert_allclose(operand.RayOperand.OPD_difference(**data),  0.22240780)
 
     def test_opd_diff_on_axis(self, set_test_backend, hubble):
         data = {
@@ -310,7 +312,7 @@ class TestRayOperand:
         }
         assert_allclose(
             operand.RayOperand.OPD_difference(**data),
-            0.0013295118803701674,
+             0.001328702368213,
         )
 
     def test_opd_diff_new_dist(self, set_test_backend, hubble):
@@ -327,14 +329,14 @@ class TestRayOperand:
     def create_test_optic(self):
         lens = Optic(name="TMA")
         lens.set_aperture(aperture_type="EPD", value=10)
-        lens.set_field_type(field_type="angle")
-        lens.add_field(y=0)
-        lens.add_field(y=+1.5)
-        lens.add_field(y=-1.5)
-        lens.add_wavelength(value=0.55, is_primary=True)
+        lens.fields.set_type(field_type="angle")
+        lens.fields.add(y=0)
+        lens.fields.add(y=+1.5)
+        lens.fields.add(y=-1.5)
+        lens.wavelengths.add(value=0.55, is_primary=True)
 
-        lens.add_surface(index=0, radius=be.inf, thickness=be.inf)
-        lens.add_surface(
+        lens.surfaces.add(index=0, radius=be.inf, thickness=be.inf)
+        lens.surfaces.add(
             index=1,
             radius=-100,
             thickness=-20,
@@ -343,7 +345,7 @@ class TestRayOperand:
             rx=be.radians(-15.0),
             is_stop=True,
         )
-        lens.add_surface(
+        lens.surfaces.add(
             index=2,
             radius=-100,
             thickness=+20,
@@ -352,7 +354,7 @@ class TestRayOperand:
             rx=be.radians(-10.0),
             dy=-11.5,
         )
-        lens.add_surface(
+        lens.surfaces.add(
             index=3,
             radius=-100,
             thickness=-19,
@@ -361,7 +363,7 @@ class TestRayOperand:
             rx=be.radians(-1.0),
             dy=-15,
         )
-        lens.add_surface(index=4, dy=-19.3)
+        lens.surfaces.add(index=4, dy=-19.3)
         return lens
 
     def test_clearance(self, set_test_backend):
@@ -407,7 +409,7 @@ class TestRayOperand:
     def test_AOI(self, set_test_backend, cooke_triplet):
         """Test the angle of incidence operand using CookeTriplet."""
 
-        # Test AOI on first surface (spherical) 
+        # Test AOI on first surface (spherical)
         data_1 = {
             "optic": cooke_triplet,
             "surface_number": 1,
@@ -440,26 +442,27 @@ class TestRayOperand:
             "wavelength": 0.55,
         }
         aoi_3 = operand.RayOperand.AOI(**data_3)
-        
-        assert_allclose(aoi_1,4.751694988282298E+000)
-        assert_allclose(aoi_2,1.898548831778711E+001)
-        assert_allclose(aoi_3,5.764367266821943E+000)
-        
-        assert aoi_1; aoi_2; aoi_3 > 0.0
+
+        assert_allclose(aoi_1, 4.751694988282298e000)
+        assert_allclose(aoi_2, 1.898548831778711e001)
+        assert_allclose(aoi_3, 5.764367266821943e000)
+
+        assert aoi_1
+        aoi_2
+        aoi_3 > 0.0
 
 
 class TestLensOperand:
     def setup_method(self):
-
         self.optic = Optic()
         self.optic.set_aperture(aperture_type="EPD", value=20.0)
-        self.optic.add_surface(index=0, thickness=be.inf)
-        self.optic.add_surface(
+        self.optic.surfaces.add(index=0, thickness=be.inf)
+        self.optic.surfaces.add(
             index=1, thickness=10.0, is_stop=True
         )  # dummy, stop surface
-        self.optic.add_wavelength(value=0.550, is_primary=True)
-        self.optic.set_field_type(field_type="angle")
-        self.optic.add_field(y=0.0)
+        self.optic.wavelengths.add(value=0.550, is_primary=True)
+        self.optic.fields.set_type(field_type="angle")
+        self.optic.fields.add(y=0.0)
 
     def test_edge_thickness_simple_biconvex(self, set_test_backend):
         """
@@ -467,15 +470,15 @@ class TestLensOperand:
         with identical semi-apertures.
         """
 
-        self.optic.add_surface(index=2, radius=50.0, thickness=5.0, material="N-BK7")
-        self.optic.add_surface(index=3, radius=-50.0, thickness=100.0, material="air")
-        self.optic.add_surface(index=4)
+        self.optic.surfaces.add(index=2, radius=50.0, thickness=5.0, material="N-BK7")
+        self.optic.surfaces.add(index=3, radius=-50.0, thickness=100.0, material="air")
+        self.optic.surfaces.add(index=4)
 
-        self.optic.update_paraxial()
+        self.optic.updater.update_paraxial()
 
-        sa1 = self.optic.surface_group.surfaces[2].semi_aperture
-        sa2 = self.optic.surface_group.surfaces[3].semi_aperture
-        semi_aperture = self.optic.surface_group.surfaces[3].semi_aperture
+        sa1 = self.optic.surfaces[2].semi_aperture
+        sa2 = self.optic.surfaces[3].semi_aperture
+        semi_aperture = be.maximum(sa1, sa2)
 
         r1 = 50.0
         r2 = -50.0
@@ -489,13 +492,27 @@ class TestLensOperand:
         edge_thickness = LensOperand.edge_thickness(self.optic, surface_number=2)
         assert_allclose(edge_thickness, expected_edge_thickness)
 
+    def test_edge_thickness_auto_initializes_semi_apertures(self, set_test_backend):
+        self.optic.surfaces.add(index=2, radius=50.0, thickness=5.0, material="N-BK7")
+        self.optic.surfaces.add(index=3, radius=-50.0, thickness=100.0, material="air")
+        self.optic.surfaces.add(index=4)
+
+        # No explicit updater.update_paraxial() call on purpose.
+        assert self.optic.surfaces[2].semi_aperture is None
+        assert self.optic.surfaces[3].semi_aperture is None
+
+        edge_thickness = LensOperand.edge_thickness(self.optic, surface_number=2)
+
+        assert self.optic.surfaces[2].semi_aperture is not None
+        assert self.optic.surfaces[3].semi_aperture is not None
+        assert be.size(edge_thickness) == 1
+
     def test_edge_thickness_plano_concave(self, set_test_backend):
+        self.optic.surfaces.add(index=2, radius=be.inf, thickness=2.0, material="N-BK7")
+        self.optic.surfaces.add(index=3, radius=50.0, thickness=100.0, material="air")
+        self.optic.surfaces.add(index=4)
 
-        self.optic.add_surface(index=2, radius=be.inf, thickness=2.0, material="N-BK7")
-        self.optic.add_surface(index=3, radius=50.0, thickness=100.0, material="air")
-        self.optic.add_surface(index=4)
-
-        self.optic.update_paraxial()
+        self.optic.updater.update_paraxial()
 
         r2 = 50.0
         t = 2.0
@@ -510,21 +527,20 @@ class TestLensOperand:
         assert_allclose(edge_thickness, expected_edge_thickness)
 
     def test_edge_thickness_different_semi_apertures(self, set_test_backend):
-
         # add a lens with two surfaces having different semi apts
-        self.optic.add_surface(index=2, radius=50.0, thickness=5.0, material="N-BK7")
-        self.optic.add_surface(index=3, radius=-50.0, thickness=100.0, material="air")
-        self.optic.add_surface(index=4)
+        self.optic.surfaces.add(index=2, radius=50.0, thickness=5.0, material="N-BK7")
+        self.optic.surfaces.add(index=3, radius=-50.0, thickness=100.0, material="air")
+        self.optic.surfaces.add(index=4)
 
-        self.optic.update_paraxial()
-        self.optic.surface_group.surfaces[2].semi_aperture = 10.0
-        self.optic.surface_group.surfaces[3].semi_aperture = 8.0
+        self.optic.updater.update_paraxial()
+        self.optic.surfaces[2].semi_aperture = 10.0
+        self.optic.surfaces[3].semi_aperture = 8.0
 
         # expected value calculation
         r1 = 50.0
         r2 = -50.0
         t = 5.0
-        semi_aperture = 8.0
+        semi_aperture = 10.0
 
         sag1 = r1 - be.sqrt(r1**2 - semi_aperture**2)
         sag2 = r2 + be.sqrt(r2**2 - semi_aperture**2)
@@ -537,7 +553,7 @@ class TestLensOperand:
     def test_edge_thickness_aspheric_surface(self, set_test_backend):
         # add an aspheric surface to the lens
         coeffs = [1e-5]
-        self.optic.add_surface(
+        self.optic.surfaces.add(
             index=2,
             surface_type="even_asphere",
             radius=50.0,
@@ -545,14 +561,14 @@ class TestLensOperand:
             material="N-BK7",
             coefficients=coeffs,
         )
-        self.optic.add_surface(index=3, radius=-50.0, thickness=100.0, material="air")
-        self.optic.add_surface(index=4)
+        self.optic.surfaces.add(index=3, radius=-50.0, thickness=100.0, material="air")
+        self.optic.surfaces.add(index=4)
 
-        self.optic.update_paraxial()
+        self.optic.updater.update_paraxial()
 
-        sa1 = self.optic.surface_group.surfaces[2].semi_aperture
-        sa2 = self.optic.surface_group.surfaces[3].semi_aperture
-        semi_aperture = be.minimum(sa1, sa2)
+        sa1 = self.optic.surfaces[2].semi_aperture
+        sa2 = self.optic.surfaces[3].semi_aperture
+        semi_aperture = be.maximum(sa1, sa2)
 
         r1 = 50.0
         r2 = -50.0

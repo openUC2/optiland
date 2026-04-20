@@ -69,7 +69,12 @@ This learning guide breaks down Optiland into a series of tutorials that cover t
 
    examples/Tutorial_6a_Introduction_to_Coatings
    examples/Tutorial_6b_Introduction_to_Polarization
-
+   examples/Tutorial_6c_Multilayer_Stack
+   examples/Tutorial_6d_Thin_Film_Optimization
+   examples/Tutorial_6e_Color_Analysis_For_Thin_Film
+   examples/Tutorial_6f_AR_Coating_System
+   examples/Tutorial_6h_Needle_Synthesis
+   examples/Tutorial_6i_Thin_Film_Tolerance_Analysis
 
 7. Advanced Optical Design
 --------------------------
@@ -114,7 +119,15 @@ This learning guide breaks down Optiland into a series of tutorials that cover t
    examples/Tutorial_10b_Custom_Coating_Types
    examples/Tutorial_10c_Custom_Optimization_Algorithm
 
-11. Machine Learning in Optical Design
+11. Extended Source Modeling
+---------------------------
+
+.. toctree::
+   :maxdepth: 1
+
+   examples/Tutorial_11a_Extended_Source_Modeling
+
+12. Machine Learning in Optical Design
 --------------------------------------
 
 These examples demonstrate how Optiland can be used in conjunction with machine learning to solve optical design problems.

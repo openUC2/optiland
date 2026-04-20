@@ -108,6 +108,7 @@ Not sure what to type in the shell? Here are a few ideas to explore Optiland rig
    gallery/differentiable_ray_tracing
    gallery/real_world_projects
    gallery/external_tools
+   gallery/extended_sources
    gallery/miscellaneous
 
 
@@ -175,7 +176,9 @@ Not sure what to type in the shell? Here are a few ideas to explore Optiland rig
    api/api_rays
    api/api_raytrace
    api/api_solves
+   api/api_sources
    api/api_surfaces
+   api/api_thin_film
    api/api_tolerancing
    api/api_visualization
    api/api_wavefront

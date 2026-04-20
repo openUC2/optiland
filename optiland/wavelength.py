@@ -41,13 +41,26 @@ class Wavelength:
             is_primary (bool): Indicates whether the wavelength is a primary
                 wavelength.
             unit (str): The unit of the wavelength value. Defaults to 'um'.
-            weight (float): The weight of the wavelength. Defaults to 1.0.
+            weight (float): Non-negative relative importance scalar. A weight
+                of 0.0 excludes the wavelength from optimization and weighted
+                analysis. Defaults to 1.0.
         """
         self._value = value
         self.is_primary = is_primary
-        self.weight = weight
         self._unit = unit.lower()
         self._value_in_um = self._convert_to_um()
+        self.weight = weight  # uses the validated setter
+
+    @property
+    def weight(self) -> float:
+        """float: Non-negative relative importance scalar for this wavelength."""
+        return self._weight
+
+    @weight.setter
+    def weight(self, value: float) -> None:
+        if value < 0:
+            raise ValueError(f"Wavelength weight must be non-negative, got {value}.")
+        self._weight = float(value)
 
     @property
     def value(self) -> float:
@@ -159,6 +172,15 @@ class WavelengthGroup:
         """The number of wavelengths"""
         return len(self.wavelengths)
 
+    def __getitem__(self, index):
+        return self.wavelengths[index]
+
+    def __iter__(self):
+        return iter(self.wavelengths)
+
+    def __len__(self):
+        return len(self.wavelengths)
+
     @property
     def primary_index(self) -> int:
         """The index of the primary wavelength
@@ -181,10 +203,10 @@ class WavelengthGroup:
         """The primary wavelength"""
         return self.wavelengths[self.primary_index]
 
-    def add_wavelength(
+    def add(
         self,
         value: float,
-        is_primary: bool = True,
+        is_primary: bool = False,
         unit: str = "um",
         weight: float = 1.0,
     ):
@@ -204,6 +226,14 @@ class WavelengthGroup:
             is_primary = True
 
         self.wavelengths.append(Wavelength(value, is_primary, unit, weight))
+
+    def remove(self, index: int) -> None:
+        """Remove a wavelength from the group.
+
+        Args:
+            index: The index of the wavelength to remove.
+        """
+        self.wavelengths.pop(index)
 
     def get_wavelength(self, wavelength_number: int) -> float:
         """Get the value of a specific wavelength.
@@ -251,7 +281,7 @@ class WavelengthGroup:
 
         new_group = cls()
         for wave_data in data["wavelengths"]:
-            new_group.add_wavelength(**wave_data)
+            new_group.add(**wave_data)
 
         return new_group
 

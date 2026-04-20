@@ -11,6 +11,7 @@ from .base import BaseFieldDefinition
 from .paraxial_image_height import ParaxialImageHeightField
 
 
+@BaseFieldDefinition.register("real_image_height")
 class RealImageHeightField(BaseFieldDefinition):
     """Defines fields by the chief ray's real height at the image plane."""
 
@@ -78,10 +79,10 @@ class RealImageHeightField(BaseFieldDefinition):
             rays = self._generate_chief_rays(optic, val_x, val_y)
 
             # 2. Trace rays
-            optic.surface_group.trace(rays)
+            optic.surfaces.trace(rays)
 
             # Propagate to image surface
-            last_surface = optic.surface_group.surfaces[-1]
+            last_surface = optic.surfaces[-1]
             last_surface.material_post.propagation_model.propagate(
                 rays, last_surface.thickness
             )
@@ -109,8 +110,8 @@ class RealImageHeightField(BaseFieldDefinition):
                 jac_update_x[mask_x] = d_curr_x[mask_x] / d_val_x[mask_x]
 
                 # Store current values before updating val_x
-                prev_val_x = val_x.copy()
-                prev_curr_x = curr_x.copy()
+                prev_val_x = be.copy(val_x)
+                prev_curr_x = be.copy(curr_x)
 
                 # Apply update X
                 val_x -= err_x / jac_update_x
@@ -123,17 +124,17 @@ class RealImageHeightField(BaseFieldDefinition):
                 jac_update_y = be.ones_like(val_y) * jacobian  # Fallback
                 jac_update_y[mask_y] = d_curr_y[mask_y] / d_val_y[mask_y]
 
-                prev_val_y = val_y.copy()  # Save OLD val
-                prev_curr_y = curr_y.copy()
+                prev_val_y = be.copy(val_y)  # Save OLD val
+                prev_curr_y = be.copy(curr_y)
 
                 val_y -= err_y / jac_update_y
             else:
-                prev_val_x = val_x.copy()
-                prev_curr_x = curr_x.copy()
+                prev_val_x = be.copy(val_x)
+                prev_curr_x = be.copy(curr_x)
                 val_x -= err_x / jacobian
 
-                prev_val_y = val_y.copy()
-                prev_curr_y = curr_y.copy()
+                prev_val_y = be.copy(val_y)
+                prev_curr_y = be.copy(curr_y)
                 val_y -= err_y / jacobian
 
         # Generate final ray origins using the converged field parameters
@@ -154,7 +155,7 @@ class RealImageHeightField(BaseFieldDefinition):
 
         EPL = optic.paraxial.EPL()
         # EPL is relative to the first surface (index 1)
-        z_pupil = optic.surface_group.positions[1] + EPL
+        z_pupil = optic.surfaces.positions[1] + EPL
 
         x1 = be.zeros_like(x0)
         y1 = be.zeros_like(y0)
@@ -179,7 +180,7 @@ class RealImageHeightField(BaseFieldDefinition):
 
             x = -val_x * (offset + EPL)
             y = -val_y * (offset + EPL)
-            z = optic.surface_group.positions[1] - offset
+            z = optic.surfaces.positions[1] - offset
 
             x0 = Px * EPD / 2 * vx + x
             y0 = Py * EPD / 2 * vy + y
@@ -235,6 +236,6 @@ class RealImageHeightField(BaseFieldDefinition):
         )
 
     def _get_starting_z_offset(self, optic):
-        z = optic.surface_group.positions[1:-1]
+        z = optic.surfaces.positions[1:-1]
         offset = optic.paraxial.EPD()
         return offset - be.min(z)

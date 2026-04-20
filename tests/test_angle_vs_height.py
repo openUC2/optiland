@@ -1,19 +1,20 @@
 """Tests for the Incident Angle vs. Height Plot Analysis module."""
+from __future__ import annotations
 
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
 import matplotlib
 import matplotlib.pyplot as plt
-from matplotlib.axes import Axes
-from matplotlib.figure import Figure
 import numpy as np
 import pytest
+from matplotlib.axes import Axes
+from matplotlib.figure import Figure
 
 import optiland.backend as be
 from optiland.analysis.angle_vs_height import (
+    BaseAngleVsHeightAnalysis,
     FieldIncidentAngleVsHeight,
     PupilIncidentAngleVsHeight,
-    BaseAngleVsHeightAnalysis,
 )
 from optiland.samples.objectives import CookeTriplet
 
@@ -45,7 +46,7 @@ class TestPupilIncidentAngleVsHeight:
         assert analysis.optic is cooke_triplet
         assert analysis.surface_idx == -2
         assert analysis.axis == 0
-        assert analysis.wavelengths == [0.55]
+        assert [wp.value for wp in analysis.wavelengths] == [0.55]
         assert analysis.field == (0.1, 0.2)
         assert analysis.num_points == 64
 
@@ -137,7 +138,7 @@ class TestFieldIncidentAngleVsHeight:
         assert analysis.optic is cooke_triplet
         assert analysis.surface_idx == -1
         assert analysis.axis == 1
-        assert analysis.wavelengths == [cooke_triplet.primary_wavelength]
+        assert [wp.value for wp in analysis.wavelengths] == [cooke_triplet.primary_wavelength]
         assert analysis.pupil == (0.0, 0.0)
         assert analysis.num_points == 128
 

@@ -44,7 +44,7 @@ class AsphereCoeffVariable(VariableBehavior):
         self.coeff_number = coeff_number
 
         # Scaling changes with the order of the asphere per coefficient
-        surf = optic.surface_group.surfaces[surface_number]
+        surf = optic.surfaces[surface_number]
         self.order = surf.geometry.order
         if scaler is None:
             factor = 10 ** (4 + self.order * self.coeff_number)
@@ -59,7 +59,7 @@ class AsphereCoeffVariable(VariableBehavior):
             float: The current value of the aspheric coefficient.
 
         """
-        surf = self._surfaces.surfaces[self.surface_number]
+        surf = self._surfaces[self.surface_number]
         try:
             value = surf.geometry.coefficients[self.coeff_number]
         except IndexError:
@@ -81,7 +81,9 @@ class AsphereCoeffVariable(VariableBehavior):
             new_value (float): The new value of the aspheric coefficient.
 
         """
-        self.optic.set_asphere_coeff(new_value, self.surface_number, self.coeff_number)
+        self.optic.updater.set_asphere_coeff(
+            new_value, self.surface_number, self.coeff_number
+        )
 
     def __str__(self):
         """Return a string representation of the variable.
