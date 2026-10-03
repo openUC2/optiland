@@ -577,3 +577,69 @@ class TestWriterPrecision:
 
         for value in (9.05795225862422e-05, -11040.02286, 1.0 / 3.0, 6365.20955):
             assert float(_fmt(value)) == value
+
+
+# ---------------------------------------------------------------------------
+# Tilted and decentered surfaces
+# ---------------------------------------------------------------------------
+
+
+def _tilted_lens(**pose) -> Optic:
+    """A singlet whose front surface is decentered and/or tilted by *pose*."""
+    optic = Optic()
+    optic.surfaces.add(index=0, radius=be.inf, thickness=be.inf)
+    optic.surfaces.add(index=1, radius=be.inf, thickness=10.0, is_stop=True)
+    optic.surfaces.add(index=2, radius=50.0, thickness=5.0, material="N-BK7", **pose)
+    optic.surfaces.add(index=3, radius=-50.0, thickness=20.0)
+    optic.surfaces.add(index=4, radius=be.inf, thickness=0.0)
+    optic.set_aperture(aperture_type="EPD", value=5.0)
+    optic.fields.set_type(field_type="angle")
+    optic.fields.add(y=0.0)
+    optic.wavelengths.add(value=0.55, is_primary=True)
+    return optic
+
+
+_TILTED_POSES = [
+    {"dy": 1.0, "rx": 0.2},
+    {"rx": 0.2},
+    {"dx": -0.5, "dy": 1.0, "rx": 0.2, "ry": 0.1, "rz": 0.3},
+]
+
+
+class TestRoundTripTiltedSurface:
+    """A tilted surface's thickness runs along the axis, not along its normal."""
+
+    @pytest.mark.parametrize("pose", _TILTED_POSES)
+    def test_surfaces_keep_their_place(self, pose, tmp_path, set_test_backend):
+        original = _tilted_lens(**pose)
+        out = tmp_path / "tilted.zmx"
+        save_zemax_file(original, str(out))
+        reloaded = load_zemax_file(str(out))
+
+        assert reloaded.surfaces.num_surfaces == original.surfaces.num_surfaces
+        for index in range(1, original.surfaces.num_surfaces):
+            before = original.surfaces[index].geometry.cs
+            after = reloaded.surfaces[index].geometry.cs
+            assert_allclose(
+                [after.x, after.y, after.z], [before.x, before.y, before.z], atol=1e-9
+            )
+            assert_allclose(
+                after.get_rotation_matrix(), before.get_rotation_matrix(), atol=1e-12
+            )
+        for Hx, Hy, Px, Py in ((0.0, 0.0, 0.0, 0.7), (0.0, 0.0, 0.5, -0.5)):
+            before = _image_intercept(original, Hx, Hy, Px, Py, 0.55)
+            after = _image_intercept(reloaded, Hx, Hy, Px, Py, 0.55)
+            assert_allclose(after, before, atol=1e-9)
+
+    def test_return_break_undoes_the_first(self):
+        model = OpticToZemaxConverter(_tilted_lens(dy=1.0, rx=0.2)).convert()
+        breaks = [s for s in model.surfaces.values() if s.get("TYPE") == "COORDBRK"]
+        surface = model.surfaces[3]
+
+        assert len(breaks) == 2
+        assert breaks[0]["PARM_6"] == 0.0
+        assert breaks[1]["PARM_6"] == 1.0
+        for parm in ("PARM_1", "PARM_2", "PARM_3", "PARM_4", "PARM_5"):
+            assert breaks[1][parm] == -breaks[0][parm]
+        assert surface["DISZ"] == 0.0
+        assert breaks[1]["DISZ"] == 5.0

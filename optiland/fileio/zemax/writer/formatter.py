@@ -8,9 +8,10 @@ Kramer Harrison, 2024
 
 from __future__ import annotations
 
-import math
 import warnings
 from typing import TYPE_CHECKING, Any
+
+from scipy.spatial.transform import Rotation
 
 import optiland.backend as be
 from optiland.fileio.common import (
@@ -190,7 +191,10 @@ class OpticToZemaxConverter:
         """Iterate optic surfaces and populate model.surfaces.
 
         For surfaces with non-trivial coordinate systems (tilts/decenters),
-        synthetic COORDBRK entries are inserted before and after.
+        synthetic COORDBRK entries are inserted before and after. The one
+        after (order flag 1, negated values) undoes the one before exactly and
+        carries the surface's thickness, so the next surface lies on the axis
+        again, as in Optiland.
         """
         glass_catalogs: list[str] = []
         output_idx = 0
@@ -214,6 +218,9 @@ class OpticToZemaxConverter:
             raw = self._encode_surface_body(
                 surface, optiland_type, output_idx, glass_catalogs
             )
+            thickness = 0.0
+            if cs_angles is not None and raw["DISZ"] != "INFINITY":
+                thickness, raw["DISZ"] = raw["DISZ"], 0.0
             model.surfaces[output_idx] = raw
             output_idx += 1
 
@@ -222,10 +229,11 @@ class OpticToZemaxConverter:
                 model.surfaces[output_idx] = cb_handler.format_cs(
                     dx=-float(cs.x),
                     dy=-float(cs.y),
-                    dz=0.0,
+                    dz=thickness,
                     rx_deg=-cs_angles[0],
                     ry_deg=-cs_angles[1],
                     rz_deg=-cs_angles[2],
+                    order=1,
                 )
                 output_idx += 1
 
@@ -248,7 +256,12 @@ class OpticToZemaxConverter:
         return optiland_type
 
     def _coordinate_break_angles(self, cs: Any) -> tuple[float, float, float] | None:
-        """Return (rx, ry, rz) in degrees if *cs* has a non-trivial transform."""
+        """Return the Zemax tilts in degrees if *cs* has a non-trivial transform.
+
+        Optiland turns about the fixed axes (R = Rz Ry Rx); a coordinate break
+        with order flag 0 tilts about x, then the new y, then the new z
+        (R = Rx Ry Rz). The angles are those that give the same R.
+        """
         has_tilt = any(
             abs(float(getattr(cs, attr, 0.0))) > 1e-12 for attr in ("rx", "ry", "rz")
         )
@@ -257,11 +270,12 @@ class OpticToZemaxConverter:
         )
         if not (has_tilt or has_decenter):
             return None
-        return (
-            math.degrees(float(cs.rx)),
-            math.degrees(float(cs.ry)),
-            math.degrees(float(cs.rz)),
-        )
+        if not has_tilt:
+            return (0.0, 0.0, 0.0)
+        matrix = be.to_numpy(cs.get_rotation_matrix())
+        angles = Rotation.from_matrix(matrix).as_euler("XYZ", degrees=True)
+        rx, ry, rz = (0.0 if abs(a) < 1e-12 else float(a) for a in angles)
+        return rx, ry, rz
 
     def _encode_surface_body(
         self,
