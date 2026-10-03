@@ -169,6 +169,14 @@ class TestZemaxDataParser:
         self.parser._read_surf_type(["TYPE", "STANDARD"])
         assert self.parser._current_surf_data["type"] == "standard"
 
+    def test_read_surface_type_dgrating(self):
+        self.parser._read_surf_type(["TYPE", "DGRATING"])
+        assert self.parser._current_surf_data["type"] == "grating"
+
+    def test_read_comment(self):
+        self.parser._read_comment(["COMM", "AC254-050-A", "front"])
+        assert self.parser._current_surf_data["comment"] == "AC254-050-A front"
+
     def test_read_floating_stop(self):
         self.parser._read_floating_stop(["FLOA"])
         assert self.parser.data_model.aperture["floating_stop"] is True
@@ -683,6 +691,115 @@ class TestCoordinateBreakOrder:
             position, rotation = _pose(optic.surfaces[index])
             assert_allclose(position, [0.0, 0.0, z], atol=1e-9)
             assert_allclose(rotation, np.eye(3), atol=1e-12)
+
+
+# ---------------------------------------------------------------------------
+# Gratings, black boxes and unknown surface types
+# ---------------------------------------------------------------------------
+
+
+def _system(*surfaces):
+    """Zemax data for an object at infinity followed by *surfaces*."""
+    object_plane = {
+        "type": "standard",
+        "radius": be.inf,
+        "thickness": be.inf,
+        "conic": 0.0,
+        "material": "air",
+    }
+    return {
+        "surfaces": dict(enumerate([object_plane, *surfaces])),
+        "aperture": {"EPD": 2.0},
+        "fields": {"type": "angle", "x": [0.0], "y": [0.0]},
+        "wavelengths": {"primary_index": 0, "data": [0.55]},
+    }
+
+
+def _surface(surface_type="standard", thickness=10.0, **extra):
+    surface = {
+        "type": surface_type,
+        "radius": be.inf,
+        "thickness": thickness,
+        "conic": 0.0,
+        "material": "air",
+    }
+    surface.update(extra)
+    return surface
+
+
+class TestDiffractionGrating:
+    def test_dgrating_becomes_a_grating_surface(self):
+        data = _system(
+            _surface(is_stop=True),
+            _surface("grating", param_0=1.2, param_1=-1.0, material="mirror"),
+            _surface(thickness=0.0),
+        )
+        optic = ZemaxToOpticConverter(data).convert()
+        geometry = optic.surfaces[2].geometry
+        assert str(geometry) == "PlanarGrating"
+        assert_allclose(geometry.grating_period, 1 / 1.2)
+        assert int(geometry.grating_order) == -1
+        assert float(geometry.groove_orientation_angle) == 0.0
+        assert optic.surfaces[2].interaction_model.is_reflective
+
+    def test_curved_dgrating_keeps_radius_and_conic(self):
+        data = _system(
+            _surface(is_stop=True),
+            _surface("grating", radius=-80.0, conic=-1.0, param_0=0.3, param_1=1.0),
+            _surface(thickness=0.0),
+        )
+        geometry = ZemaxToOpticConverter(data).convert().surfaces[2].geometry
+        assert str(geometry) == "StandardGrating"
+        assert float(geometry.radius) == -80.0
+        assert float(geometry.k) == -1.0
+
+    def test_dgrating_without_grooves_is_a_plain_surface(self):
+        data = _system(
+            _surface(is_stop=True),
+            _surface("grating", param_0=0.0, param_1=1.0),
+            _surface(thickness=0.0),
+        )
+        geometry = ZemaxToOpticConverter(data).convert().surfaces[2].geometry
+        assert str(geometry) == "Planar"
+
+    def test_order_adds_order_wavelength_over_period_along_local_y(self):
+        # A transmissive grating at normal incidence, 0.5 lines per um:
+        # order +1 sends the beam to +y with M = 0.55 um * 0.5 / um.
+        data = _system(
+            _surface(is_stop=True),
+            _surface("grating", param_0=0.5, param_1=1.0),
+            _surface(thickness=0.0),
+        )
+        optic = ZemaxToOpticConverter(data).convert()
+        ray = optic.trace_generic(Hx=0.0, Hy=0.0, Px=0.0, Py=0.0, wavelength=0.55)
+        assert_allclose([ray.L[0], ray.M[0]], [0.0, 0.275])
+
+    def test_blackbox_is_refused_by_name(self):
+        data = _system(
+            _surface(is_stop=True),
+            _surface("blackbox", comment="NMV-50M23-a.zbb"),
+            _surface(thickness=0.0),
+        )
+        with pytest.raises(
+            ValueError, match=r"Surface 2 is a Zemax BLACKBOX \(NMV-50M23-a\.zbb\)"
+        ):
+            ZemaxToOpticConverter(data).convert()
+
+    def test_unknown_type_names_the_surface(self):
+        data = _system(_surface(is_stop=True), _surface("szernsag"))
+        with pytest.raises(
+            ValueError, match=r"Unsupported Zemax surface type: SZERNSAG \(surface 2\)"
+        ):
+            ZemaxToOpticConverter(data).convert()
+
+    def test_comment_reaches_the_surface(self):
+        data = _system(
+            _surface(is_stop=True),
+            _surface(comment="AC254-050-A"),
+            _surface(thickness=0.0),
+        )
+        optic = ZemaxToOpticConverter(data).convert()
+        assert optic.surfaces[2].comment == "AC254-050-A"
 
 
 # ---------------------------------------------------------------------------

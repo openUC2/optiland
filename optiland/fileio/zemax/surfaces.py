@@ -467,3 +467,75 @@ class ToroidalSurfaceHandler(BaseSurfaceHandler):
         for i, c in enumerate(coeffs[:8]):
             result[f"PARM_{i + 2}"] = float(c)
         return result
+
+
+@register
+class DiffractionGratingSurfaceHandler(BaseSurfaceHandler):
+    """Handler for DGRATING surfaces: a standard surface with straight grooves.
+
+    PARM 1 is the groove density in lines per micrometre and PARM 2 the
+    diffraction order. The grooves run along the local x axis, so the grating
+    vector is local y, Optiland's groove orientation angle 0; an order adds
+    order * wavelength / period to the ray's direction along it, as in Zemax.
+    """
+
+    zemax_type: ClassVar[str] = "DGRATING"
+    optiland_type: ClassVar[str] = "grating"
+
+    def parse(self, raw: dict[str, Any]) -> dict[str, Any]:
+        """Parse a DGRATING surface raw dict.
+
+        A grating without grooves (PARM 1 = 0) is read as a standard surface.
+
+        Args:
+            raw: Raw surface dict from ZemaxDataParser.
+
+        Returns:
+            Kwargs for ``optic.surfaces.add()``.
+        """
+        params = {
+            "surface_type": self.optiland_type,
+            "radius": raw.get("radius", float(be.inf)),
+            "conic": raw.get("conic", 0.0),
+        }
+        lines_per_um = float(raw.get("param_0", 0.0))
+        if lines_per_um == 0.0:
+            params["surface_type"] = "standard"
+            return params
+        params.update(
+            {
+                "grating_period": 1.0 / lines_per_um,
+                "grating_order": round(float(raw.get("param_1", 0.0))),
+                "groove_orientation_angle": 0.0,
+            }
+        )
+        return params
+
+    def format(self, surface: Surface) -> dict[str, Any]:
+        """Format a grating surface to Zemax operand dict.
+
+        Args:
+            surface: The Optiland surface.
+
+        Returns:
+            Raw operand dict for ZemaxFileEncoder.
+
+        Raises:
+            NotImplementedError: If the grooves are turned away from the local
+                x axis, which a DGRATING cannot hold.
+        """
+        geom = surface.geometry
+        if abs(float(geom.groove_orientation_angle)) > 1e-12:
+            raise NotImplementedError(
+                "A Zemax DGRATING has its grooves along the local x axis; this "
+                "grating's groove orientation angle is "
+                f"{float(geom.groove_orientation_angle)} rad."
+            )
+        period = float(geom.grating_period)
+        return {
+            "TYPE": self.zemax_type,
+            "CURV": _curvature(float(geom.radius)),
+            "CONI": float(getattr(geom, "k", 0.0)),
+            "PARM_1": 0.0 if math.isinf(period) else 1.0 / period,
+            "PARM_2": float(geom.grating_order),
+        }

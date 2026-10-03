@@ -68,6 +68,7 @@ class ZemaxDataParser:
             "WAVM": self._read_wavelength,
             "PWAV": self._read_primary_wave,
             "SURF": self._read_surface,
+            "COMM": self._read_comment,
             "TYPE": self._read_surf_type,
             "PARM": self._read_surface_parameter,
             "CURV": self._read_radius,
@@ -418,7 +419,11 @@ class ZemaxDataParser:
             "ODDASPHE": "odd_asphere",
             "COORDBRK": "coordinate_break",
             "TOROIDAL": "toroidal",
+            "DGRATING": "grating",
         }.get(data[1], data[1].lower())
+
+    def _read_comment(self, data: list[str]) -> None:
+        self._current_surf_data["comment"] = " ".join(data[1:])
 
     def _read_surface_parameter(self, data: list[str]) -> None:
         key = f"param_{int(data[1]) - 1}"

@@ -57,6 +57,8 @@ _GEOM_STR_TO_TYPE: dict[str, str] = {
     "Even Asphere": "even_asphere",
     "Odd Asphere": "odd_asphere",
     "Toroidal": "toroidal",
+    "PlanarGrating": "grating",
+    "StandardGrating": "grating",
 }
 
 
@@ -293,6 +295,9 @@ class OpticToZemaxConverter:
 
         if surface.is_stop:
             raw["STOP"] = True
+
+        if surface.comment:
+            raw["COMM"] = surface.comment
 
         # Semi-aperture (DIAM)
         # For float_by_stop_size aperture, the stop surface must carry DIAM

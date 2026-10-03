@@ -643,3 +643,58 @@ class TestRoundTripTiltedSurface:
             assert breaks[1][parm] == -breaks[0][parm]
         assert surface["DISZ"] == 0.0
         assert breaks[1]["DISZ"] == 5.0
+
+
+# ---------------------------------------------------------------------------
+# Gratings and comments
+# ---------------------------------------------------------------------------
+
+
+def _grating_system(**grating) -> Optic:
+    optic = Optic()
+    optic.surfaces.add(index=0, radius=be.inf, thickness=be.inf)
+    optic.surfaces.add(index=1, radius=be.inf, thickness=10.0, is_stop=True)
+    optic.surfaces.add(
+        index=2,
+        thickness=20.0,
+        surface_type="grating",
+        comment="GR25-0610",
+        **grating,
+    )
+    optic.surfaces.add(index=3, radius=be.inf, thickness=0.0)
+    optic.set_aperture(aperture_type="EPD", value=2.0)
+    optic.fields.set_type(field_type="angle")
+    optic.fields.add(y=0.0)
+    optic.wavelengths.add(value=0.55, is_primary=True)
+    return optic
+
+
+class TestRoundTripGrating:
+    def test_grating_and_comment_survive(self, tmp_path, set_test_backend):
+        original = _grating_system(
+            radius=-80.0,
+            conic=-1.0,
+            grating_period=1 / 1.2,
+            grating_order=-1,
+            groove_orientation_angle=0.0,
+        )
+        out = tmp_path / "grating.zmx"
+        save_zemax_file(original, str(out))
+        assert "TYPE DGRATING" in out.read_text()
+        reloaded = load_zemax_file(str(out))
+
+        geometry = reloaded.surfaces[2].geometry
+        assert str(geometry) == "StandardGrating"
+        assert_allclose(geometry.grating_period, 1 / 1.2)
+        assert int(geometry.grating_order) == -1
+        assert reloaded.surfaces[2].comment == "GR25-0610"
+        before = _image_intercept(original, 0.0, 0.0, 0.0, 0.5, 0.55)
+        after = _image_intercept(reloaded, 0.0, 0.0, 0.0, 0.5, 0.55)
+        assert_allclose(after, before, atol=1e-9)
+
+    def test_turned_grooves_are_refused(self, tmp_path):
+        optic = _grating_system(
+            grating_period=2.0, grating_order=1, groove_orientation_angle=0.3
+        )
+        with pytest.raises(NotImplementedError, match="grooves along the local x"):
+            save_zemax_file(optic, str(tmp_path / "turned.zmx"))

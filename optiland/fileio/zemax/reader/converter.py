@@ -17,7 +17,21 @@ from optiland.fileio.base import BaseOpticReader
 from optiland.fileio.zemax.model import ZemaxDataModel
 from optiland.fileio.zemax.reader.parser import ZemaxDataParser
 from optiland.fileio.zemax.reader.source import ZemaxFileSourceHandler
+from optiland.fileio.zemax.surfaces import get_handler
 from optiland.optic import Optic
+
+# Surface types (as ZemaxDataParser names them) that the converter builds.
+_SURFACE_TYPES = frozenset(
+    {
+        "standard",
+        "even_asphere",
+        "odd_asphere",
+        "toroidal",
+        "paraxial",
+        "coordinate_break",
+        "grating",
+    }
+)
 
 
 class ZemaxToOpticConverter(BaseOpticReader):
@@ -95,6 +109,7 @@ class ZemaxToOpticConverter(BaseOpticReader):
 
     def _configure_surfaces(self) -> None:
         """Configure all surfaces on the optic."""
+        self._check_surface_types()
         has_cb = any(
             sd.get("type") == "coordinate_break"
             for sd in self.data["surfaces"].values()
@@ -117,6 +132,43 @@ class ZemaxToOpticConverter(BaseOpticReader):
 
             self._add_surface_with_current_cs(surf, surf_idx)
             surf_idx += 1
+
+    def _check_surface_types(self) -> None:
+        """Refuse a surface the reader cannot build, naming it by its number.
+
+        Raises:
+            ValueError: For a BLACKBOX, whose prescription is encrypted, or any
+                other surface type the reader does not know.
+        """
+        for idx in sorted(self.data["surfaces"], key=int):
+            surf = self.data["surfaces"][idx]
+            surf_type = surf.get("type", "standard")
+            if surf_type == "blackbox":
+                name = f" ({surf['comment']})" if surf.get("comment") else ""
+                raise ValueError(
+                    f"Surface {idx} is a Zemax BLACKBOX{name}, an encrypted lens: "
+                    "its prescription cannot be read. Replace it in OpticStudio "
+                    "by the prescription or by a paraxial surface, then export "
+                    "again."
+                )
+            if surf_type not in _SURFACE_TYPES:
+                raise ValueError(
+                    f"Unsupported Zemax surface type: {str(surf_type).upper()} "
+                    f"(surface {idx})"
+                )
+
+    def _surface_extras(self, surf: dict[str, Any]) -> dict[str, Any]:
+        """Grating parameters and the comment, for surfaces that have them."""
+        extras: dict[str, Any] = {}
+        if surf["type"] == "grating":
+            grating = get_handler("DGRATING").parse(surf)
+            extras["surface_type"] = grating["surface_type"]
+            for key in ("grating_period", "grating_order", "groove_orientation_angle"):
+                if key in grating:
+                    extras[key] = grating[key]
+        if surf.get("comment"):
+            extras["comment"] = surf["comment"]
+        return extras
 
     def _consume_coordinate_break(self, surf: dict[str, Any]) -> None:
         """Fold a COORDBRK surface's transform into the running CoordinateSystem.
@@ -178,6 +230,8 @@ class ZemaxToOpticConverter(BaseOpticReader):
             surface_params["radius_x"] = radius_x
         else:
             surface_params["radius"] = surf["radius"]
+
+        surface_params.update(self._surface_extras(surf))
 
         thickness = surf.get("thickness", 0.0)
         if be.isinf(float(thickness)):
@@ -254,6 +308,8 @@ class ZemaxToOpticConverter(BaseOpticReader):
         else:
             surface_params["radius"] = data["radius"]
 
+        surface_params.update(self._surface_extras(data))
+
         self.optic.surfaces.add(**surface_params)
 
     def _configure_surface_coefficients(
@@ -272,7 +328,7 @@ class ZemaxToOpticConverter(BaseOpticReader):
             ValueError: If the surface type is not recognised.
         """
         surf_type = data["type"]
-        if surf_type in ("standard", "coordinate_break", "paraxial"):
+        if surf_type in ("standard", "coordinate_break", "paraxial", "grating"):
             return None
 
         if surf_type in ("even_asphere", "odd_asphere", "toroidal"):
