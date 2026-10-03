@@ -119,7 +119,18 @@ class ZemaxToOpticConverter(BaseOpticReader):
             surf_idx += 1
 
     def _consume_coordinate_break(self, surf: dict[str, Any]) -> None:
-        """Fold a COORDBRK surface's transform into the running CoordinateSystem."""
+        """Fold a COORDBRK surface's transform into the running CoordinateSystem.
+
+        Zemax applies each tilt about the axes the step before left, in the
+        order the order flag (PARM 6) gives:
+
+        - order flag 0: decenter in x and y, then tilt about x, y, z;
+        - any other value: tilt about z, y, x, then decenter.
+
+        The second order undoes the first, which is how a return coordinate
+        break restores the axis after a tilted element. The thickness then
+        moves along the new z axis.
+        """
         dx = float(surf.get("param_0", 0.0))
         dy = float(surf.get("param_1", 0.0))
         dz = float(surf.get("thickness", 0.0))
@@ -127,22 +138,15 @@ class ZemaxToOpticConverter(BaseOpticReader):
         ry = be.deg2rad(surf.get("param_3", 0.0))
         rz = be.deg2rad(surf.get("param_4", 0.0))
 
-        # Chain: first apply rotations/decenters, then thickness (Z)
-        cs_rot = CoordinateSystem(
-            x=dx,
-            y=dy,
-            z=0.0,
-            rx=rx,
-            ry=ry,
-            rz=rz,
-            reference_cs=self.current_cs,
-        )
-        self.current_cs = CoordinateSystem(
-            x=0.0,
-            y=0.0,
-            z=dz,
-            reference_cs=cs_rot,
-        )
+        steps = [{"x": dx, "y": dy}, {"rx": rx}, {"ry": ry}, {"rz": rz}]
+        if float(surf.get("param_5", 0.0)) != 0.0:
+            steps.reverse()
+
+        cs = self.current_cs
+        for step in steps:
+            if any(float(value) != 0.0 for value in step.values()):
+                cs = CoordinateSystem(**step, reference_cs=cs)
+        self.current_cs = CoordinateSystem(z=dz, reference_cs=cs)
 
     def _add_surface_with_current_cs(self, surf: dict[str, Any], surf_idx: int) -> None:
         """Add a non-CB surface, resolving its effective global CS first."""

@@ -8,6 +8,7 @@ from __future__ import annotations
 import os
 from unittest.mock import mock_open, patch
 
+import numpy as np
 import pytest
 
 import optiland.backend as be
@@ -539,6 +540,110 @@ class TestZemaxToOpticConverterExtended:
         }
         optic = ZemaxToOpticConverter(zemax_data).convert()
         assert be.isinf(optic.surfaces[0].thickness)
+
+
+# ---------------------------------------------------------------------------
+# Coordinate breaks
+# ---------------------------------------------------------------------------
+
+
+def _coordbrk(dx=0.0, dy=0.0, rx=0.0, ry=0.0, rz=0.0, order=0, thickness=0.0):
+    """A COORDBRK surface dict as ZemaxDataParser gives it (tilts in degrees)."""
+    return {
+        "type": "coordinate_break",
+        "param_0": dx,
+        "param_1": dy,
+        "param_2": rx,
+        "param_3": ry,
+        "param_4": rz,
+        "param_5": order,
+        "thickness": thickness,
+        "radius": be.inf,
+        "conic": 0.0,
+    }
+
+
+def _plane(thickness=0.0, material="air"):
+    return {
+        "type": "standard",
+        "radius": be.inf,
+        "thickness": thickness,
+        "conic": 0.0,
+        "material": material,
+    }
+
+
+def _convert(*surfaces):
+    """An Optic from an object plane followed by *surfaces*."""
+    object_plane = _plane(thickness=be.inf)
+    data = {
+        "surfaces": dict(enumerate([object_plane, *surfaces])),
+        "aperture": {"EPD": 10},
+        "fields": {"type": "angle", "x": [0], "y": [0]},
+        "wavelengths": {"primary_index": 0, "data": [0.55]},
+    }
+    return ZemaxToOpticConverter(data).convert()
+
+
+def _rotation(axis, angle_deg):
+    c, s = np.cos(np.radians(angle_deg)), np.sin(np.radians(angle_deg))
+    return {
+        "x": np.array([[1, 0, 0], [0, c, -s], [0, s, c]]),
+        "y": np.array([[c, 0, s], [0, 1, 0], [-s, 0, c]]),
+        "z": np.array([[c, -s, 0], [s, c, 0], [0, 0, 1]]),
+    }[axis]
+
+
+def _pose(surface):
+    """(position, rotation matrix) of a surface in the global frame."""
+    cs = surface.geometry.cs
+    position = np.array([float(cs.x), float(cs.y), float(cs.z)])
+    return position, be.to_numpy(cs.get_rotation_matrix())
+
+
+class TestCoordinateBreakOrder:
+    def test_order_zero_decenters_then_tilts_about_x_y_z(self):
+        optic = _convert(
+            _coordbrk(dx=1.0, dy=2.0, rx=10.0, ry=20.0, rz=30.0, order=0),
+            _plane(),
+        )
+        position, rotation = _pose(optic.surfaces[1])
+        expected = _rotation("x", 10) @ _rotation("y", 20) @ _rotation("z", 30)
+        assert_allclose(position, [1.0, 2.0, 0.0])
+        assert_allclose(rotation, expected)
+
+    def test_other_order_tilts_about_z_y_x_then_decenters(self):
+        optic = _convert(
+            _coordbrk(dx=1.0, dy=2.0, rx=10.0, ry=20.0, rz=30.0, order=1),
+            _plane(),
+        )
+        position, rotation = _pose(optic.surfaces[1])
+        expected = _rotation("z", 30) @ _rotation("y", 20) @ _rotation("x", 10)
+        assert_allclose(position, expected @ [1.0, 2.0, 0.0])
+        assert_allclose(rotation, expected)
+
+    def test_thickness_moves_along_the_new_axis(self):
+        optic = _convert(_coordbrk(dy=1.0, rx=30.0, thickness=5.0), _plane())
+        position, _ = _pose(optic.surfaces[1])
+        assert_allclose(position, [0.0, 1.0, 0.0] + _rotation("x", 30) @ [0, 0, 5.0])
+
+    def test_return_break_restores_the_axis(self):
+        # OpticStudio's tilt/decenter-element pattern, as in a filter tilted by
+        # 15 deg and decentered by 1 mm: the return break (order 1, picked-up
+        # negated values) undoes the first one exactly.
+        optic = _convert(
+            _plane(thickness=-30.0),
+            _coordbrk(dy=1.0, rx=-15.0, order=0),
+            _plane(thickness=-3.5, material="N-BK7"),
+            _plane(thickness=3.5),
+            _coordbrk(dy=-1.0, rx=15.0, order=1, thickness=-3.5),
+            _plane(thickness=-15.0),
+            _plane(),
+        )
+        for index, z in ((4, -33.5), (5, -48.5)):
+            position, rotation = _pose(optic.surfaces[index])
+            assert_allclose(position, [0.0, 0.0, z], atol=1e-9)
+            assert_allclose(rotation, np.eye(3), atol=1e-12)
 
 
 # ---------------------------------------------------------------------------
