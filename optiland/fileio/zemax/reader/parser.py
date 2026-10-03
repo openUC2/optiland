@@ -8,6 +8,7 @@ Kramer Harrison, 2024
 
 from __future__ import annotations
 
+import warnings
 from typing import Any
 
 import optiland.backend as be
@@ -19,6 +20,12 @@ from optiland.physical_apertures import OffsetRadialAperture, RadialAperture
 # Fraunhofer d-line (um), used to evaluate a candidate glass's index for
 # comparison against the Nd recorded on a GLAS line.
 _WL_D = 0.5875618
+
+# OpticStudio catalogue names that Optiland's material database spells
+# differently.
+_GLASS_NAMES = {
+    "F_SILICA": "fused_silica",  # SCHOTT.AGF: fused silica
+}
 
 
 class ZemaxDataParser:
@@ -287,6 +294,13 @@ class ZemaxDataParser:
             self._current_surf_data["material"] = "mirror"
             return
 
+        # GLAS <name> <solve> <surface> ...: solve 2 picks the material up
+        # from another surface (OpticStudio writes ___BLANK as the name). It
+        # is resolved once all surfaces are read.
+        if len(data) > 3 and data[2] == "2":
+            self._current_surf_data["material_pickup"] = int(data[3])
+            return
+
         self._current_surf_data["material"] = material_name
         try:
             self._current_surf_data["index"] = float(data[4].replace(",", "."))
@@ -296,19 +310,20 @@ class ZemaxDataParser:
             self._current_surf_data["abbe"] = None
 
         resolved = self._resolve_glass_by_catalog_and_index(material_name)
+        lookup_name = _GLASS_NAMES.get(material_name.upper(), material_name)
 
         if resolved is not None:
             self._current_surf_data["material"] = resolved
         else:
             # Try to resolve to a real Material from the glass catalog
             try:
-                self._current_surf_data["material"] = Material(material_name)
+                self._current_surf_data["material"] = Material(lookup_name)
             except ValueError:
                 if self.data_model.glass_catalogs:
                     for mfg in self.data_model.glass_catalogs:
                         try:
                             self._current_surf_data["material"] = Material(
-                                material_name, mfg.lower()
+                                lookup_name, mfg.lower()
                             )
                             break
                         except ValueError:
@@ -316,6 +331,16 @@ class ZemaxDataParser:
 
         # Fall back to AbbeMaterial if catalog lookup failed
         if not isinstance(self._current_surf_data["material"], BaseMaterial):
+            if len(data) > 2 and data[2] == "0":
+                # A catalogue glass (solve 1 would be a model glass).
+                warnings.warn(
+                    f"Surface {self._current_surf}: glass {material_name!r} is "
+                    "not in Optiland's catalogue; using nd = "
+                    f"{self._current_surf_data['index']} and vd = "
+                    f"{self._current_surf_data['abbe']} from the GLAS line.",
+                    UserWarning,
+                    stacklevel=2,
+                )
             self._current_surf_data["material"] = AbbeMaterial(
                 self._current_surf_data["index"],
                 self._current_surf_data["abbe"],
@@ -489,3 +514,22 @@ class ZemaxDataParser:
         """Flush the last in-progress surface into the model."""
         if self._current_surf >= 0:
             self.data_model.surfaces[self._current_surf] = self._current_surf_data
+        self._resolve_material_pickups()
+
+    def _resolve_material_pickups(self) -> None:
+        """Give each surface that picks up a material its source's material.
+
+        Raises:
+            ValueError: If a pickup names a surface the file does not have.
+        """
+        surfaces = self.data_model.surfaces
+        for index in sorted(surfaces):
+            source = surfaces[index].pop("material_pickup", None)
+            if source is None:
+                continue
+            if source not in surfaces:
+                raise ValueError(
+                    f"Surface {index} picks its material up from surface "
+                    f"{source}, which the file does not have."
+                )
+            surfaces[index]["material"] = surfaces[source]["material"]
