@@ -115,6 +115,45 @@ class TestZemaxDataParser:
         mat = self.parser._current_surf_data["material"]
         assert isinstance(mat, Material)
 
+    def test_read_glass_pickup_takes_the_source_material(self):
+        # OpticStudio's tilt/decenter-element tool gives its dummy surface
+        # the material of the element's last surface: GLAS ___BLANK 2 <surf>.
+        glass_lines = [
+            None,
+            ["GLAS", "N-BK7", "0", "0", "1.5", "40"],
+            ["GLAS", "___BLANK", "2", "1", "1.5", "40"],
+            ["GLAS", "___BLANK", "2", "0", "1.5", "40"],
+        ]
+        for line in glass_lines:
+            self.parser._read_surface(["SURF"])
+            if line:
+                self.parser._read_glass(line)
+        self.parser._finalize_surface()
+
+        surfaces = self.parser.data_model.surfaces
+        assert surfaces[2]["material"] is surfaces[1]["material"]
+        assert surfaces[3]["material"] == "air"
+        assert "material_pickup" not in surfaces[2]
+
+    def test_read_glass_pickup_from_a_missing_surface(self):
+        self.parser._read_surface(["SURF"])
+        self.parser._read_glass(["GLAS", "___BLANK", "2", "7", "1.5", "40"])
+        with pytest.raises(ValueError, match="surface 7"):
+            self.parser._finalize_surface()
+
+    def test_read_glass_f_silica_is_fused_silica(self):
+        self.parser._read_glass(["GLAS", "F_SILICA", "0", "0", "1.5", "40"])
+        mat = self.parser._current_surf_data["material"]
+        assert isinstance(mat, Material)
+        assert_allclose(mat.n(0.5875618), 1.4585, atol=1e-4)
+
+    def test_read_glass_unknown_catalogue_glass_warns(self):
+        self.parser._read_surface(["SURF"])
+        with pytest.warns(UserWarning, match="'UNOBTAINIUM' is not in"):
+            self.parser._read_glass(["GLAS", "UNOBTAINIUM", "0", "0", "1.6", "50"])
+        mat = self.parser._current_surf_data["material"]
+        assert_allclose(mat.n(0.5875618), 1.6, atol=1e-3)
+
     def test_read_stop(self):
         self.parser._read_stop([])
         assert self.parser._current_surf_data["is_stop"]
