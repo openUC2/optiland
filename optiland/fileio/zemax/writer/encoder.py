@@ -183,6 +183,8 @@ class ZemaxFileEncoder:
             self._encode_surface(lines, raw)
 
     def _encode_surface(self, lines: list[str], raw: dict[str, Any]) -> None:
+        if raw.get("COMM"):
+            lines.append(f"  COMM {raw['COMM']}")
         surf_type = raw.get("TYPE", "STANDARD")
         lines.append(f"  TYPE {surf_type}")
 
