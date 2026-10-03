@@ -266,8 +266,11 @@ class RealRays(BaseRays):
         nx, ny, nz, dot = self._align_surface_normal(nx, ny, nz)
 
         if is_reflective:
-            sgn = -1
-            n2c = n2 * sgn
+            # Reflection keeps the tangential part and reverses the normal
+            # part (the minus before each root below). Dividing by -n2 as
+            # well reversed the whole direction: the ray left through the
+            # mirror, and order 0 was not a reflection.
+            n2c = n2
             self.L = (
                 self.L0 * d * n1 * ny**2
                 + self.L0 * d * n1 * nz**2
